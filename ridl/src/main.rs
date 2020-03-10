@@ -43,8 +43,8 @@ fn find_deps(path: &Path) -> IDLFile {
                 println!("[INFO] Encountered use statement");
                 useds.push(used.clone())
             },
-            syn::Item::Trait(tr) => (),
-            syn::Item::Struct(st) => (),
+            syn::Item::Trait(_) => (),
+            syn::Item::Struct(_) => (),
             _ => {
                 println!("[ERROR] IDL may only contain traits, structs, and use statements");
                 panic!()
@@ -87,11 +87,28 @@ fn find_deps(path: &Path) -> IDLFile {
     return IDLFile {ast, deps};
 }
 
+fn build_sym_table(tree: &IDLFile, table: &mut Vec<String>) {
+    for dep in &tree.deps {
+        build_sym_table(&dep, table);
+    }
+    for item in &tree.ast.items {
+        match item {
+            syn::Item::Trait(tr) => table.push(tr.ident.to_string()),
+            syn::Item::Struct(st) => table.push(st.ident.to_string()),
+            syn::Item::Use(_) => (),
+            _ => panic!()
+        }
+    }
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() != 2 {
         println!("Usage: <invocation> <filepath>");
         return ()
     }
+    let mut table : Vec<String> = Vec::new();
     let tree = find_deps(Path::new(&args[1]));
+    build_sym_table(&tree, &mut table);
+    println!("Types found in tree: {:?}", table)
 }
