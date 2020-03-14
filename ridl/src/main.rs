@@ -31,67 +31,84 @@ fn get_ast(path: &Path) -> syn::File {
 
 struct IDLFile {
     ast: syn::File,
-    deps: Vec<IDLFile>
+    deps: Vec<usize>
 }
 
-fn find_deps(path: &Path) -> IDLFile {
-    let ast = get_ast(path);
-    let mut useds : Vec<syn::ItemUse> = Vec::new();
-    for item in &ast.items {
-        match item {
-            syn::Item::Use(used) => {
-                println!("[INFO] Encountered use statement");
-                useds.push(used.clone())
-            },
-            syn::Item::Trait(_) => (),
-            syn::Item::Struct(_) => (),
-            _ => {
-                println!("[ERROR] IDL may only contain traits, structs, and use statements");
-                panic!()
-            }
-        }
-    }
+fn find_deps(path: &Path, idl_store: &mut Vec<IDLFile>, seen: &mut Vec<PathBuf>) -> usize {
+    match seen.iter().position(|x| x == path) {
+        Some(id) => {
+            println!("\tAlready saw IDL file at {:?}", seen[id]);
+            return id
+        },
+        None => ()
+    };
 
+    let mut p = PathBuf::new();
+    p.push(path);
+    idl_store.push(IDLFile {ast: get_ast(path), deps: Vec::new()});
+    seen.push(p);
+    let id = idl_store.len() - 1;
+    
     let mut imports : Vec<String> = Vec::new();
-    for used in useds {
-        match used.tree {
-            syn::UseTree::Name(name) => {
-                println!("[INFO] Used {}", name.ident);
-                imports.push(name.ident.to_string())
-            },
-            _ => {
-                println!("[ERROR] Only \"use <name>;\" is supported for use statements");
-                panic!()
+    {
+        let idl = &idl_store[id];
+        let ast = &idl.ast;
+        let mut useds : Vec<syn::ItemUse> = Vec::new();
+        for item in &ast.items {
+            match item {
+                syn::Item::Use(used) => {
+                    println!("[INFO] Encountered use statement");
+                    useds.push(used.clone())
+                },
+                syn::Item::Trait(_) => (),
+                syn::Item::Struct(_) => (),
+                _ => {
+                    println!("[ERROR] IDL may only contain traits, structs, and use statements");
+                    panic!()
+                }
             }
         }
-    }
 
-    let mut deps : Vec<IDLFile> = Vec::new();
+        for used in useds {
+            match used.tree {
+                syn::UseTree::Name(name) => {
+                    println!("[INFO] Used {}", name.ident);
+                    imports.push(name.ident.to_string())
+                },
+                _ => {
+                    println!("[ERROR] Only \"use <name>;\" is supported for use statements");
+                    panic!()
+                }
+            }
+        }
+    }    
+
+    let mut deps : Vec<usize> = Vec::new();
     if imports.len() > 0 {
-        println!("[INFO] Collecting ASTs for all imports of: {}", path.to_str().expect("[ERROR] Could not convert path to string"));
+        println!(
+            "[INFO] Collecting ASTs for all imports of: {}",
+            path.to_str().expect("[ERROR] Could not convert path to string"));
+        
         for imp in imports {
             let mut buf = PathBuf::new();
             buf.push(path.parent().unwrap_or(Path::new("")));
             buf.push(imp + ".idl");
             println!("\t{}", buf.to_str().expect("Could not convert from path to str"));
-            deps.push(find_deps(buf.as_path()))
+            deps.push(find_deps(buf.as_path(), idl_store, seen))
         }
     }
 
-    // Once all imports have been "analyzed" (this could also involve code generation), analyze this file
-    // This is to allow for the whole type-checking thing
-    // Or we could split the functionality and have a recursive function build a tree of IDL ASTs
-    // Which we then traverse for analysis
-    // And again for generation (generation may need to have identifier table information for fully qualified names)
+    idl_store[id].deps = deps;
 
-    return IDLFile {ast, deps};
+    return idl_store.len() - 1;
 }
 
-fn build_sym_table(tree: &IDLFile, table: &mut Vec<String>) {
-    for dep in &tree.deps {
-        build_sym_table(&dep, table);
+fn build_sym_table(tree: usize, idls_store: &Vec<IDLFile>, table: &mut Vec<String>) {
+    let idl = &idls_store[tree];
+    for dep in &idl.deps {
+        build_sym_table(*dep, idls_store, table);
     }
-    for item in &tree.ast.items {
+    for item in &idl.ast.items {
         match item {
             syn::Item::Trait(tr) => table.push(tr.ident.to_string()),
             syn::Item::Struct(st) => table.push(st.ident.to_string()),
@@ -108,7 +125,10 @@ fn main() {
         return ()
     }
     let mut table : Vec<String> = Vec::new();
-    let tree = find_deps(Path::new(&args[1]));
-    build_sym_table(&tree, &mut table);
+    let mut idl_store : Vec<IDLFile> = Vec::new();
+    let mut seen : Vec<PathBuf> = Vec::new();
+    let tree = find_deps(Path::new(&args[1]), &mut idl_store, &mut seen);
+    // TODO: figure out how type checking is going to work in a dependency graph that itself has cycles
+    build_sym_table(tree, &idl_store, &mut table);
     println!("Types found in tree: {:?}", table)
 }
