@@ -1,0 +1,8 @@
+trait BDev {
+    fn add_sys(sys: &dyn Foo);
+    fn read(a: &dyn Foo) -> &dyn BDev;
+}
+
+trait Foo {
+    fn hard_parse() -> &dyn BDev;
+}

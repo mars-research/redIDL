@@ -1,0 +1,26 @@
+TODO: figure out how type checking is going to work in a dependency graph that itself has cycles
+- How do we handle <<use idl_file>> vs. <<use idl_file::Type>>
+- Attempt to resolve types as they are needed, or do it bottom-up?
+- Defer IDL parse to actually needing to inspect it?
+- Or parse all upfront?
+- Since we allow cycles, there is no "floor". Well, there is: when we encounter a type already in the
+    evaluated resolve path, we assume it is resolved
+- So recursively? Resolving a type:
+    - Find in IDL, or dependency
+    - Simple check to see if type exists or not
+    - Determine if type is valid for use:
+        - Traits for: &dyn Trait
+        - Copy-structs for: CopyStruct
+        - Other (what is allowed here, TBD) for: RRef<Other> (TODO: whenever this gets finalized, defer)
+    - Determine if type itself is well-formed, i.e., resolve all its referenced types
+    - Plain types must be copy-able (RRef are copyable)
+    - RRef must simply refer to any parseable type whose identifiers can all be resolved
+    - &dyn Trait are the only permitted uses of traits
+- Clarification: once a type passes our basic checks (traits only have methods, etc.), we add its full name to a table of known types
+    Then we schedule checks to ensure that any unresolved names fit that spec. Each name must be resolved to the module it is referred to in.
+    Using declarations are strange, though. We don't know what type they refer to, so we schedule a check to discover the actual underlying type.
+    Types qualified by a module name automatically schedule such use-checks.
+- Perhaps it might be easier to implement single-file type checks, before we add suport for using decls.
+- An unresolved name must refer to a valid type fitting a specific condition.
+- So, what if a name resolves to a use-decl? (Either by explicit naming, or implicitly by module name). Create a stand-in, that is assumed to be the first required type?
+    But for types that are referred to by full path, they must alway be referred to by full path. But those are just strings.

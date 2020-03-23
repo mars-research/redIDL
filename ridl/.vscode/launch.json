@@ -9,7 +9,7 @@
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/target/debug/ridl.exe",
-            "args": ["D:/source/redleaf/sys/idl/BDev.idl"],
+            "args": ["./sf-test.idl"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
