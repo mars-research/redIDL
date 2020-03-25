@@ -7,14 +7,14 @@ use proc_macro::TokenStream;
 #[proc_macro]
 pub fn is_copy(input: TokenStream) -> TokenStream {
     let parsed : syn::Type = syn::parse(input).expect("failed to parse");
-    let out = quote::quote!{ static_assertions::assert_impl_all!(#parsed: Copy); };
+    let out = quote::quote!{ red_idl::assert_impl_all!(#parsed: Copy); };
     out.into()
 }
 
 #[proc_macro]
 pub fn is_functional(input: TokenStream) -> TokenStream {
     let parsed : syn::Type = syn::parse(input).expect("failed to parse");
-    let out = quote::quote!{ static_assertions::assert_impl_all!(#parsed: markers::Functional); };
+    let out = quote::quote!{ red_idl::assert_impl_all!(#parsed: markers::Functional); };
     out.into()
 }
 
@@ -28,7 +28,7 @@ pub fn declare_functional(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn is_rrefable(input: TokenStream) -> TokenStream {
     let parsed : syn::Type = syn::parse(input).expect("failed to parse");
-    let out = quote::quote!{ static_assertions::assert_impl_all!(#parsed: markers::RRefable); };
+    let out = quote::quote!{ red_idl::assert_impl_all!(#parsed: markers::RRefable); };
     out.into()
 }
 

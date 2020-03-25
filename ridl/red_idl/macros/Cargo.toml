@@ -11,5 +11,4 @@ proc-macro = true
 
 [dependencies]
 syn = { version = "", features = ["full"] }
-markers = { path = "../markers" }
 quote = ""

@@ -8,5 +8,4 @@ edition = "2018"
 
 [dependencies]
 macros = { path = "macros" }
-markers = { path = "markers" }
 static_assertions = ""
