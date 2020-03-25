@@ -205,7 +205,8 @@ impl Resolver {
 
     fn add_require(&mut self, ty: &syn::Type) {
         match ty {
-            syn::Type::Reference(r) => self.add_trait_ref(&r),
+            syn::Type::Reference(r) => self.add_trait_ref(&r), // Since at this point it must be a trait
+            syn::Type::Path(p) => self.add_path(&p),
             _ => println!("[WARNING] Type checks only added for traits so far")
         }
     }
@@ -254,6 +255,11 @@ impl Resolver {
             }
         }
     }
+
+    fn add_path(&mut self, p: &syn::TypePath) {
+        // The whole expression must be copy
+
+    }
 }
 
 struct Resolver {
@@ -262,6 +268,35 @@ struct Resolver {
     requires: Vec<Require>,
     ids: Vec<String>
 }
+
+/* 
+    We're doing this wrong. Summary of the rules:
+        - You can pass and return &dyn FooTrait, provided the trait only has functions
+        - You can pass and return any type that is Copy (must check that its innards are, in fact, Copy)
+        - You can pass and return RRefs to everything else, but those types must use OptRRefs inside, and not RRefs.
+    
+    Internally, types should only be referred to by globally-qualified names, i.e.: "::module::Type"
+    These can obviously only be declared once the actual type definition is seen
+
+    Possibly generate constraints in terms of macros
+*/
+
+// Does the given trait consist purely of functions?
+fn is_functional(tr: &syn::ItemTrait) -> bool {
+    for item in &tr.items {
+        match item {
+            syn::TraitItem::Method(_) => continue,
+            _ => return false
+        }
+    }
+    true
+}
+
+// Only checks if its declared as copy, if we just copy the struct verbatim to the crates, compilation will fail if it actually isn't
+fn is_copy() -> bool {false}
+
+// Really just return false if we find that it has a plain RRef in it
+fn is_rrefable() -> bool {false}
 
 fn main() {
     let args: Vec<String> = env::args().collect();
