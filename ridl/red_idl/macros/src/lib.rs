@@ -21,7 +21,7 @@ pub fn is_functional(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn declare_functional(input: TokenStream) -> TokenStream {
     let parsed : syn::Type = syn::parse(input).expect("failed to parse");
-    let out = quote::quote!{ impl markers::Functional for #parsed {} };
+    let out = quote::quote!{ impl red_idl::Functional for #parsed {} };
     out.into()
 }
 
@@ -35,6 +35,6 @@ pub fn is_rrefable(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn declare_rrefable(input: TokenStream) -> TokenStream {
     let parsed : syn::Type = syn::parse(input).expect("failed to parse");
-    let out = quote::quote!{ impl markers::RRefable for #parsed {} };
+    let out = quote::quote!{ impl red_idl::RRefable for #parsed {} };
     out.into()
 }

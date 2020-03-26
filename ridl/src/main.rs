@@ -51,8 +51,17 @@ fn main() {
     src_root.push("src");
     let red_idl_root = Path::new(&args[3]);
 
+    // TODO: Until we have better delta handling
+    let _ = fs::remove_dir_all(&crate_root);
+
     fs::create_dir_all(&src_root).expect("[ERROR] Could not create crate root");
     let idl_dir = fs::read_dir(idl_root).expect("[ERROR] Could not open the IDL root");
+
+    let mut lpath = PathBuf::new();
+    lpath.push(&src_root);
+    lpath.push("lib.rs");
+    let mut lfile = fs::File::create(&lpath).expect("[ERROR] Could not open lib.rs");
+
     for item in idl_dir {
         let entry = item.expect("[ERROR] Could not inspect item");
         let metadata = entry.metadata().expect("[ERROR] Could not get item metadata");
@@ -65,16 +74,28 @@ fn main() {
         let name = idl.file_stem().expect("[ERROR] Anonymous IDL files not allowed");
         let mut gen_path = PathBuf::new();
         gen_path.push(&src_root);
-        gen_path.push(name);
+        gen_path.push(&name);
         gen_path.set_extension("rs");
         println!("{}", gen_path.to_str().expect("[ERROR] Could not convert path").to_string());
         let mut file = fs::File::create(&gen_path).expect("[ERROR] Could not open generated file");
         
+        writeln!(lfile, "pub mod {};", name.to_string_lossy()).expect("[ERROR] Could not write re-export for module");
+        writeln!(file, "use crate::*;").expect("[ERROR] could not write import fixup");
+
         // And this is the part where analysis/generation happens
         let ast = get_ast(&idl);
         let generated = quote::quote!{#ast}.to_string();
-        write!(file, "{}", generated).expect("[ERROR] Could not write to generated file");
+        writeln!(file, "{}", generated).expect("[ERROR] Could not write to generated file");
     }
+
+    let cargo = format!(
+        "[package]\nname = \"{}\"\nversion = \"0.1.0\"\nedition = \"2018\"\n\n[dependencies]\nred_idl = {{ path = \"red_idl\" }}\n",
+        crate_root.file_name().expect("[ERROR] Crate has no root").to_string_lossy());
+    let mut cpath = PathBuf::new();
+    cpath.push(crate_root);
+    cpath.push("Cargo.toml");
+    let mut cfile = fs::File::create(&cpath).expect("[ERROR] Could not open Cargo.toml");
+    write!(cfile, "{}", cargo).expect("[ERROR] Could not write Cargo.toml");
 
     let options = fs_extra::dir::CopyOptions {
         overwrite: false,
