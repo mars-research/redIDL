@@ -98,6 +98,13 @@ fn is_functional(item: &syn::Item) -> bool {
     }
 }
 
+fn get_ident(item: &syn::Item) -> String {
+    match item {
+        syn::Item::Trait(tr) => tr.ident.to_string(),
+        _ => panic!()
+    }
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() != 3 {
@@ -141,11 +148,22 @@ fn main() {
 
         let (ast, content) = get_idl(&idl);
 
+        let mut fn_traits: Vec<String> = Vec::new();
+
         for item in &ast.items {
-            println!("[DEBUG] Item was functional trait: {}", is_functional(item));
+            let fnc = is_functional(item);
+            if fnc {
+                fn_traits.push(get_ident(item));
+            }
+            
+            println!("[DEBUG] Item was functional trait: {}", fnc);
         }
 
         writeln!(file, "{}", content).expect("[ERROR] Could not write to generated file");
+
+        for fnt in fn_traits {
+            writeln!(file, "red_idl::declare_functional!({});", fnt).expect("[ERROR] Could not write to generated file");
+        }
     }
     
     write_manifest(gen_root);
