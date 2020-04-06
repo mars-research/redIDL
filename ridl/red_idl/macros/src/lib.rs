@@ -21,7 +21,7 @@ pub fn is_functional(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn declare_functional(input: TokenStream) -> TokenStream {
     let parsed : syn::Type = syn::parse(input).expect("failed to parse");
-    let out = quote::quote!{ impl red_idl::Functional for #parsed {} };
+    let out = quote::quote!{ impl red_idl::Functional for dyn #parsed {} };
     out.into()
 }
 
