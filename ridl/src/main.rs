@@ -98,11 +98,94 @@ fn is_functional(item: &syn::Item) -> bool {
     }
 }
 
+// How do we implement this?
+// If RRef implements std::Any, we can force-compare type ids
+// But wait, there's more!
+// We can only call type_id on an instance of the type!
+// The alternative is to add a restriction to the IDL to reserve the RRef name (easier)
+fn _is_rrefable(item: &syn::Item) -> bool {
+    if let syn::Item::Struct(s) = item {
+        for field in &s.fields {
+            let _ty = &field.ty;
+
+        }
+    }
+
+    return true;
+}
+
 fn get_ident(item: &syn::Item) -> String {
     match item {
         syn::Item::Trait(tr) => tr.ident.to_string(),
         _ => panic!()
     }
+}
+
+enum Category {
+    Copy,
+    RRefable,
+    Functional
+}
+
+struct TypeCheck {
+    ty: String,
+    cat: Category
+}
+
+fn check_signature(m: &syn::TraitItemMethod) -> Vec<TypeCheck> {
+    let mut checks: Vec<TypeCheck> = Vec::new();
+    let sig = &m.sig;
+    let rt = &sig.output;
+    if let syn::ReturnType::Type(_, bty) = rt {
+        match &**bty {
+            syn::Type::Path(_) => {
+                checks.push(TypeCheck {ty: quote::quote!{ #bty }.to_string(), cat: Category::Copy})
+                // TODO: Deal with RRef<>
+            },
+            syn::Type::Reference(_) => {
+                // TODO: Deal with traits
+            },
+            _ => {
+                checks.push(TypeCheck {ty: quote::quote!{ #bty }.to_string(), cat: Category::Copy})
+            }
+        }
+    }
+
+    for arg in &sig.inputs {
+        if let syn::FnArg::Typed(pt) = arg {
+            let ty = &pt.ty;
+            match &**ty {
+                syn::Type::Path(_) => {
+                    checks.push(TypeCheck {ty: quote::quote!{ #ty }.to_string(), cat: Category::Copy})
+                    // TODO: Deal with RRef<>
+                },
+                syn::Type::Reference(_) => {
+                    // TODO: Deal with traits
+                },
+                _ => {
+                    checks.push(TypeCheck {ty: quote::quote!{ #ty }.to_string(), cat: Category::Copy})
+                }
+            }
+        }
+    }
+
+    checks
+}
+
+fn collect_type_checks(item: &syn::Item) -> Vec<TypeCheck> {
+    if let syn::Item::Trait(tr) = item {
+        let mut tc: Vec<TypeCheck> = Vec::new();
+        for member in &tr.items {
+            // Not the place for syntax checking
+            if let syn::TraitItem::Method(m) = member {
+                tc.extend(check_signature(m));
+            }
+        }
+        
+        return tc;
+    }
+
+    Vec::new() // inneficient, but it makes it easier to write v1
 }
 
 fn main() {
@@ -149,8 +232,12 @@ fn main() {
         let (ast, content) = get_idl(&idl);
 
         let mut fn_traits: Vec<String> = Vec::new();
+        let mut checks: Vec<TypeCheck> = Vec::new();
 
         for item in &ast.items {
+            let tc = collect_type_checks(item);
+            checks.extend(tc);
+            
             let fnc = is_functional(item);
             if fnc {
                 fn_traits.push(get_ident(item));
@@ -159,10 +246,22 @@ fn main() {
             println!("[DEBUG] Item was functional trait: {}", fnc);
         }
 
-        writeln!(file, "{}", content).expect("[ERROR] Could not write to generated file");
+        writeln!(file, "{}\n", content).expect("[ERROR] Could not write to generated file");
 
         for fnt in fn_traits {
-            writeln!(file, "red_idl::declare_functional!({});", fnt).expect("[ERROR] Could not write to generated file");
+            writeln!(
+                file,
+                "red_idl::declare_functional!({});", fnt
+            ).expect("[ERROR] Could not write to generated file");
+        }
+
+        for check in checks {
+            if let Category::Copy = check.cat {
+                writeln!(
+                    file,
+                    "red_idl::is_copy!({});", check.ty
+                ).expect("[ERROR] Could not write to generated file");
+            }
         }
     }
     
