@@ -2,6 +2,8 @@ extern crate syn;
 extern crate quote;
 extern crate fs_extra;
 
+mod types;
+
 use std::env;
 use std::fs;
 use std::io::Read;
@@ -82,8 +84,35 @@ fn open_generated(gen_src_dir: &Path, name: &std::ffi::OsStr) -> fs::File {
     fs::File::create(&gen_path).expect("[ERROR] Could not open generated file")
 }
 
+// Reject things like enums, bare functions, constants, etc. Anything that isn't a
+// using, a struct, or a trait. These are the "unused" parts of Rust in our IDL subset
+fn reject_unsupported(item: &syn::Item) -> bool {
+    match item {
+        syn::Item::Struct(_) => false,
+        syn::Item::Trait(_) => false,
+        syn::Item::Use(_) => false,
+        _ => true
+    }
+}
+
+// Rejects any module-level identifier of RRef<> or OptRRef<> (TODO: is this enough?)
+fn reject_reserved(item: &syn::Item) -> bool {
+    match item {
+        syn::Item::Struct(st) => {
+            let name = st.ident.to_string();
+            name == "RRef" || name == "OptRRef"
+        },
+        syn::Item::Trait(tr) => {
+            let name = tr.ident.to_string();
+            name == "RRef" || name == "OptRRef"
+        },
+        _ => false
+    }
+}
+
 /*
     Another type system revision!
+    Note that no IDL type may exist outside of this
     Introducing SafeCopy -
         - Is Copy (so we can bitwise copy)
         - Does not have references or pointers of any kind (so we know that we can copy it out of a domain,
@@ -96,6 +125,7 @@ fn open_generated(gen_src_dir: &Path, name: &std::ffi::OsStr) -> fs::File {
     Functional remains the same
 */
 
+// TODO: Don't just panic!() on bad IDL
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() != 3 {
@@ -115,10 +145,10 @@ fn main() {
     fs::create_dir_all(&gen_src_dir).expect("[ERROR] Could not create crate root");
     let idl_dir = fs::read_dir(idl_root).expect("[ERROR] Could not open the IDL root");
     
-    let mut lpath = PathBuf::new();
-    lpath.push(&gen_src_dir);
-    lpath.push("lib.rs");
-    let mut lfile = fs::File::create(&lpath).expect("[ERROR] Could not open lib.rs");
+    let mut lib_path = PathBuf::new();
+    lib_path.push(&gen_src_dir);
+    lib_path.push("lib.rs");
+    let mut lib_file = fs::File::create(&lib_path).expect("[ERROR] Could not open lib.rs");
     
     for item in idl_dir {
         let entry = item.expect("[ERROR] Could not inspect item");
@@ -128,16 +158,39 @@ fn main() {
             continue
         }
         
-        let idl = entry.path();
-        let name = idl.file_stem().expect("[ERROR] Anonymous IDL files not allowed");
-        let mut file = open_generated(&gen_src_dir, name);
+        let idl_path = entry.path();
+        let idl_name = idl_path.file_stem().expect("[ERROR] Anonymous IDL files not allowed");
+        let mut gen_file = open_generated(&gen_src_dir, idl_name);
         
-        writeln!(lfile, "pub mod {};", name.to_string_lossy()).expect("[ERROR] Could not write re-export for module");
-        writeln!(file, "use crate::*;").expect("[ERROR] could not write import fixup");
+        // Standard preamble
+
+        writeln!(lib_file, "pub mod {};", idl_name.to_string_lossy()).expect("[ERROR] Could not write re-export for module");
+        writeln!(gen_file, "use crate::*;").expect("[ERROR] could not write import fixup");
         
         // And this is the part where analysis/generation happens
 
-        
+        let (ast, content) = get_idl(&idl_path);
+        let mut type_decls = types::TypeSystemDecls::new();
+
+        for item in &ast.items {
+            if reject_unsupported(item) {
+                println!("[ERROR] Not a recognized IDL syntax");
+                return
+            }
+
+            if reject_reserved(item) {
+                println!("[ERROR] RRef and OptRRef are reserved for IDL use");
+                return
+            }
+
+            if !type_decls.classify(item) {
+                println!("[ERROR] This is an invalid type");
+                return
+            }
+        }
+
+        writeln!(gen_file, "{}\n", content).expect("[ERROR] Could not copy required definitions to generated file");
+        type_decls.write_decls(&mut gen_file);
     }
     
     write_manifest(gen_root);
