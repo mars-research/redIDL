@@ -166,6 +166,7 @@ fn main() {
 
         writeln!(lib_file, "pub mod {};", idl_name.to_string_lossy()).expect("[ERROR] Could not write re-export for module");
         writeln!(gen_file, "use crate::*;").expect("[ERROR] could not write import fixup");
+        writeln!(gen_file, "use red_idl::*;").expect("[ERROR] could not write helper fixup");
         
         // And this is the part where analysis/generation happens
 

@@ -1,5 +1,9 @@
 extern crate macros;
 extern crate static_assertions;
+extern crate rref;
+
+pub use rref::RRef;
+pub type OptRRef<T> = Option<RRef<T>>;
 
 pub use macros::*;
 pub use static_assertions::*;
