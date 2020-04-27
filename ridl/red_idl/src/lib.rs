@@ -13,8 +13,6 @@ pub trait Functional {}
 pub trait RRefable {}
 pub trait SafeCopy {}
 
-impl RRefable for SafeCopy {}
-
 impl SafeCopy for bool {}
 impl SafeCopy for u8 {}
 impl SafeCopy for u16 {}

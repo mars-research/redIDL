@@ -3,6 +3,7 @@ extern crate quote;
 extern crate fs_extra;
 
 mod types;
+mod fn_check;
 
 use std::env;
 use std::fs;
@@ -184,8 +185,13 @@ fn main() {
                 return
             }
 
-            if !type_decls.classify(item) {
+            if !type_decls.process_type(item) {
                 println!("[ERROR] This is an invalid type");
+                return
+            }
+
+            if !fn_check::generate_signature_checks(item, &mut type_decls) {
+                println!("[ERROR] At least one function signature was rejected");
                 return
             }
         }

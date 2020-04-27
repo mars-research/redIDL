@@ -20,6 +20,10 @@ fn path_is_opt_rref(pt: &syn::Path) -> bool {
     pt.segments.len() == 1 && pt.segments[0].ident.to_string() == "OptRRef"
 }
 
+fn path_is_rref(pt: &syn::Path) -> bool {
+    pt.segments.len() == 1 && pt.segments[0].ident.to_string() == "RRef"
+}
+
 impl TypeSystemDecls {
     pub fn new() -> Self {
         TypeSystemDecls {
@@ -72,7 +76,14 @@ impl TypeSystemDecls {
                 let path = &p.path;
 
                 if path_is_opt_rref(path) {
-                    return FieldStatus::IsOptRRef;
+                    if let syn::PathArguments::AngleBracketed(args) = &path.segments[0].arguments {
+                        let gen_arg = &args.args[0];
+                        self.check_rrefable.push(quote::quote!{#gen_arg}.to_string());                        
+                        return FieldStatus::IsOptRRef;
+                    }
+                    else {
+                        return FieldStatus::IsInvalid;
+                    }
                 }
 
                 self.check_safe_copy.push(quote::quote!{#path}.to_string());
@@ -92,7 +103,53 @@ impl TypeSystemDecls {
         return FieldStatus::IsNormal;
     }
 
-    pub fn classify(&mut self, item: &syn::Item) -> bool {
+    fn process_arg_type(&mut self, ty: &syn::Type) -> bool {
+        match &ty {
+            syn::Type::Reference(rr) => self.process_reference(rr),
+            syn::Type::Path(p) => {
+                let path = &p.path;
+
+                if path_is_rref(path) {
+                    if let syn::PathArguments::AngleBracketed(args) = &path.segments[0].arguments {
+                        let gen_arg = &args.args[0];
+                        self.check_rrefable.push(quote::quote!{#gen_arg}.to_string());
+                        return true
+                    }
+                    else {
+                        return false
+                    }
+                }
+
+                self.check_safe_copy.push(quote::quote!{#path}.to_string());
+
+                true
+            }
+            _ => {
+                println!("[ERROR] Invalid argument type");
+                false
+            }
+        }
+    }
+
+    pub fn process_signature(&mut self, sig: &syn::Signature) -> bool {
+        if let syn::ReturnType::Type(_, ty) = &sig.output {
+            if !self.process_arg_type(ty) {
+                return false
+            }
+        }
+
+        for arg in &sig.inputs {
+            if let syn::FnArg::Typed(pat) = arg {
+                if !self.process_arg_type(&pat.ty) {
+                    return false;
+                }
+            }
+        }
+
+        true
+    }
+
+    pub fn process_type(&mut self, item: &syn::Item) -> bool {
         match item {
             // Is either rrefable or safe-copy
             // safe-copy is a subset of rrefable

@@ -21,7 +21,10 @@ pub fn require_copy(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn declare_safe_copy(input: TokenStream) -> TokenStream {
     let parsed : syn::Type = syn::parse(input).expect("failed to parse");
-    let out = quote::quote!{ impl red_idl::SafeCopy for #parsed {} };
+    let out = quote::quote!{
+        impl red_idl::SafeCopy for #parsed {}
+        impl red_idl::RRefable for #parsed {}
+    };
     out.into()
 }
 
@@ -42,7 +45,7 @@ pub fn declare_functional(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn require_rrefable(input: TokenStream) -> TokenStream {
     let parsed : syn::Type = syn::parse(input).expect("failed to parse");
-    let out = quote::quote!{ red_idl::assert_impl_all!(#parsed: markers::RRefable); };
+    let out = quote::quote!{ red_idl::assert_impl_all!(#parsed: red_idl::RRefable); };
     out.into()
 }
 
