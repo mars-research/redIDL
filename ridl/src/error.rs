@@ -44,7 +44,7 @@ where
 {
     match result {
         Err(e) => {
-            println!("Error: {}, ({})", msg, e);
+            println!("Error: {} (Cause: \"{}\")", msg, e);
             Err(Error::from(e))
         }
         Ok(r) => Ok(r)
@@ -55,5 +55,15 @@ where
 macro_rules! try_with_msg {
     ($e:expr, $($arg:expr),+) => {
         crate::error::_err_helper($e, &format!($($arg),+))
+    };
+}
+
+#[macro_export]
+macro_rules! fail_with_msg {
+    ($($arg:expr),+) => {
+        {
+            println!("Error: {}", &format!($($arg),+));
+            return Err(crate::error::Error)
+        }
     };
 }

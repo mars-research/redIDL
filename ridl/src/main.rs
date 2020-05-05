@@ -6,7 +6,8 @@ use std::path;
 use std::fs;
 
 #[macro_use]
-mod error;
+pub mod error;
+mod verify;
 
 use error::Result;
 
@@ -38,6 +39,7 @@ fn walk_idl_files(idl_root: fs::ReadDir) -> Result<()> {
         let meta = entry.metadata().expect("could not read entry metadata");
         if meta.is_dir() {
             walk_idl_files(fs::read_dir(entry.path())?)?;
+            continue;
         }
 
         let src = try_with_msg!(
@@ -51,6 +53,10 @@ fn walk_idl_files(idl_root: fs::ReadDir) -> Result<()> {
             dpath)?;
 
         // Verify IDL contents
+        try_with_msg!(
+            verify::walk_file(&ast),
+            "\"{}\" failed verification",
+            dpath)?;
         // Collect information for generation
     }
 
