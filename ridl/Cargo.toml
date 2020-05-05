@@ -9,4 +9,3 @@ edition = "2018"
 [dependencies]
 syn = { version = "", features = ["full"] }
 quote = { version = "" }
-fs_extra = ""
