@@ -54,7 +54,7 @@ fn walk_idl_files(idl_root: fs::ReadDir) -> Result<()> {
 
         // Verify IDL contents
         try_with_msg!(
-            verify::walk_file(&ast),
+            verify::verify_file(&ast),
             "\"{}\" failed verification",
             dpath)?;
         // Collect information for generation
@@ -69,6 +69,8 @@ fn main() -> Result<()> {
         println!("Usage: ridl <redleaf-root>");
         return Ok(())
     }
+
+    println!("Info: \"Cause: Compiler Error\" means a syntax problem");
 
     let root = path::Path::new(&args[1]);
     let idl_root = open_subdir(root, "sys/interfaces/usr/src/")?;
