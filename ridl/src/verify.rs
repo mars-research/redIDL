@@ -31,12 +31,17 @@ fn is_primitive_type(path: &syn::TypePath) -> bool {
     PRIMITIVE_TYPES.contains(&path.path.segments[0].ident.to_string().as_str())
 }
 
+// Need for a source -> dest transformation from unverified -> verified IDL
+// For now, just use the _* convention for testing dirs
+
 fn verify_field_type(ty: &syn::Type) -> Result<()> {
     match ty {
         syn::Type::Path(p) => {
             if is_primitive_type(p) {
                 return Ok(())
             }
+
+            // At this point, we should make deferred check for SafeCopy-ness
 
             fail_with_msg!("type \"{}\" is not a primitive type", quote::quote!(#ty))
         }

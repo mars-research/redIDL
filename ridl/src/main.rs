@@ -63,6 +63,21 @@ fn walk_idl_files(idl_root: fs::ReadDir) -> Result<()> {
     Ok(())
 }
 
+/*
+    Another type system revision!
+    Note that no IDL type may exist outside of this
+    Introducing SafeCopy -
+        - Is Copy (so we can bitwise copy)
+        - Does not have references or pointers of any kind (so we know that we can copy it out of a domain,
+            and it won't reference anything in that domain)
+        - Is a struct (for now)
+    
+    Introducing the *new* RRefable -
+        - Extends SafeCopy, allowing OptRRef<> members
+    
+    Functional remains the same
+*/
+
 fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
     if args.len() != 2 {
@@ -74,7 +89,9 @@ fn main() -> Result<()> {
 
     let root = path::Path::new(&args[1]);
     let idl_root = open_subdir(root, "sys/interfaces/usr/src/")?;
+    let _gen_idl_root = open_subdir(root, "sys/interfaces/_usr/src/")?;
     let _create_root = open_subdir(root, "sys/interfaces/create/src/")?;
+    let _gen_create_root = open_subdir(root, "sys/interfaces/_create/src/")?;
     let _proxy_gen = create_subfile(root, "usr/proxy/src/_gen.rs")?;
     let _create_gen = create_subfile(root, "src/_gen.rs")?;
     walk_idl_files(idl_root)?;
