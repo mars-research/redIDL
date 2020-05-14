@@ -5,6 +5,7 @@ use std::error;
 use std::fmt;
 
 extern crate syn;
+extern crate fs_extra;
 
 #[derive(Clone)]
 pub struct Error;
@@ -19,6 +20,12 @@ impl convert::From<io::Error> for Error {
 
 impl convert::From<syn::Error> for Error {
     fn from(_: syn::Error) -> Error {
+        Error
+    }
+}
+
+impl convert::From<fs_extra::error::Error> for Error {
+    fn from(_: fs_extra::error::Error) -> Error {
         Error
     }
 }
