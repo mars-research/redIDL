@@ -130,7 +130,7 @@ fn main() -> Result<()> {
     options.copy_inside = true;
     dir::copy(usr_root, usr_gen_root, &options)?;
     let mut cargo = fs::OpenOptions::new().write(true).append(true).open(usr_manifest)?;
-    writeln!(cargo, "red_idl = {{ path = \"../../../red_idl\" }}")?;
+    writeln!(cargo, "red_idl = {{ path = \"../../../redIDL/red_idl\" }}")?;
     walk_idl_files(idl_root, &gen_idl_root)?;
 
     Ok(())
