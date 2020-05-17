@@ -120,9 +120,11 @@ fn main() -> Result<()> {
     let _proxy_gen = create_subfile(root, "usr/proxy/src/_gen.rs")?;
     let _create_gen = create_subfile(root, "src/_gen.rs")?;
 
-    try_with_msg!(
-        fs::remove_dir_all(&usr_gen_root),
-        "couldn't reset generated crate")?;
+    if usr_gen_root.exists() {
+        try_with_msg!(
+            fs::remove_dir_all(&usr_gen_root),
+            "couldn't reset generated crate")?;
+    }
 
     let mut options = dir::CopyOptions::new();
     options.copy_inside = true;
