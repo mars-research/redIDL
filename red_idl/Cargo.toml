@@ -10,5 +10,4 @@ edition = "2018"
 macros = { path = "macros" }
 static_assertions = ""
 
-# Very jank
-rref = { path = "C:/Users/David/Source/redleaf/sys/lib/rref/" }
+rref = { path = "../../sys/lib/rref/" }
