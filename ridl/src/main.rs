@@ -72,10 +72,7 @@ fn walk_idl_files(idl_root: fs::ReadDir, gen_root: &path::Path) -> Result<()> {
 
         println!("Info: attempting to create \"{}\"", subpath.display());
         let mut dst_file = fs::File::create(subpath)?;
-        // TODO: add real RRef type here
-        writeln!(dst_file, "{}\nextern crate red_idl;\
-            red_idl::assert_type_eq_all!(RRef, rref::RRef);\n\
-            red_idl::assert_type_eq_all!(OptRRef, red_idl::OptRRef);", src)?;
+        writeln!(dst_file, "{}\nextern crate red_idl;\n", src)?;
 
         macros.write(&mut dst_file)?;
 
@@ -84,21 +81,6 @@ fn walk_idl_files(idl_root: fs::ReadDir, gen_root: &path::Path) -> Result<()> {
 
     Ok(())
 }
-
-/*
-    Another type system revision!
-    Note that no IDL type may exist outside of this
-    Introducing SafeCopy -
-        - Is Copy (so we can bitwise copy)
-        - Does not have references or pointers of any kind (so we know that we can copy it out of a domain,
-            and it won't reference anything in that domain)
-        - Is a struct (for now)
-    
-    Introducing the *new* RRefable -
-        - Extends SafeCopy, allowing OptRRef<> members
-    
-    Functional remains the same
-*/
 
 fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
