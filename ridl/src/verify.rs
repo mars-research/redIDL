@@ -48,7 +48,7 @@ impl DeferredChecks {
 
     pub fn write(&self, file: &mut fs::File) -> Result<()> {
         for entry in &self.safe_copy_types {
-            writeln!(file, "red_idl::require_copy!({0});\nred_idl::declare_safe_copy!({0});", entry)?;
+            writeln!(file, "red_idl::declare_safe_copy!({0});", entry)?;
         }
 
         for entry in &self.rrefable_types {
@@ -56,7 +56,7 @@ impl DeferredChecks {
         }
 
         for entry in &self.safe_copy_needed {
-            writeln!(file, "red_idl::require_safe_copy!({});", entry)?;
+            writeln!(file, "red_idl::require_copy!({0});\nred_idl::require_safe_copy!({});", entry)?;
         }
 
         for entry in &self.rrefable_needed {
@@ -176,11 +176,13 @@ fn verify_struct(st: &syn::ItemStruct, macros: &mut DeferredChecks) -> Result<()
         }
     }
 
+    let ident = &st.ident;
+    let generics = &st.generics;
     if is_safe_copy {
-        macros.safe_copy_types.push(st.ident.to_string())
+        macros.safe_copy_types.push(quote::quote!(#ident#generics).to_string())
     }
     else {
-        macros.rrefable_types.push(st.ident.to_string())
+        macros.rrefable_types.push(quote::quote!(#ident#generics).to_string())
     }
 
     Ok(())
