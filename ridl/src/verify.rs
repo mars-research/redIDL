@@ -156,7 +156,9 @@ fn verify_field_type(ty: &syn::Type, macros: &mut DeferredChecks) -> Result<Fiel
             macros.safe_copy_needed.push(quote::quote!(#p).to_string());
 
             Ok(FieldType::Normal)
-        }
+        },
+        syn::Type::BareFn(_) => fail_with_msg!("fields cannot be function pointers"),
+        syn::Type::Ptr(_) => fail_with_msg!("fields cannot be pointers"),
         _ => Ok(FieldType::Normal)
     }
 }
@@ -188,11 +190,13 @@ fn verify_struct(st: &syn::ItemStruct, macros: &mut DeferredChecks) -> Result<()
     Ok(())
 }
 
+// Currently assume that all enums are SafeCopy (this automatically requires that it be Copy)
 fn verify_enum(e: &syn::ItemEnum, macros: &mut DeferredChecks) -> Result<()> {
     macros.safe_copy_types.push(e.ident.to_string()); // TODO: this needs to take into account contained types
     Ok(())
 }
 
+// Incomplete
 fn verify_item(item: &syn::Item, macros: &mut DeferredChecks) -> Result<()> {
     match item {
         syn::Item::Fn(f) => fail_with_msg!("bare function \"{}\" not permitted", f.sig.ident),
