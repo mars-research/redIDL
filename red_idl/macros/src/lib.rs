@@ -42,7 +42,7 @@ pub fn declare_safe_copy(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn require_functional(input: TokenStream) -> TokenStream {
     let parsed : syn::Path = syn::parse(input).expect("failed to parse");
-    let out = quote::quote!{ red_idl::assert_impl_all!(#parsed: red_idl::Functional); };
+    let out = quote::quote!{ red_idl::assert_impl_all!(dyn #parsed: red_idl::Functional); };
     out.into()
 }
 

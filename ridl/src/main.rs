@@ -70,7 +70,6 @@ fn walk_idl_files(idl_root: fs::ReadDir, gen_root: &path::Path) -> Result<()> {
             "\"{}\" failed verification",
             dpath)?;
 
-        println!("Info: attempting to create \"{}\"", subpath.display());
         let mut dst_file = fs::File::create(subpath)?;
         writeln!(dst_file, "{}\nextern crate red_idl;\n", src)?;
 
@@ -89,6 +88,7 @@ fn main() -> Result<()> {
         return Ok(())
     }
 
+    println!("Warning: All trait and signature checks are disabled");
     println!("Info: \"Cause: Compiler Error\" means a syntax problem");
 
     let root = path::Path::new(&args[1]);

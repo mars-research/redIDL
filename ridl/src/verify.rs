@@ -10,7 +10,7 @@ use error::Result;
 pub struct DeferredChecks {
     safe_copy_types: Vec<String>,
     rrefable_types: Vec<String>,
-    _functional_types: Vec<String>,
+    functional_types: Vec<String>,
     safe_copy_needed: Vec<String>,
     rrefable_needed: Vec<String>,
     _functional_needed: Vec<String>
@@ -39,7 +39,7 @@ impl DeferredChecks {
         DeferredChecks {
             safe_copy_types: Vec::new(),
             rrefable_types: Vec::new(),
-            _functional_types: Vec::new(),
+            functional_types: Vec::new(),
             safe_copy_needed: Vec::new(),
             rrefable_needed: Vec::new(),
             _functional_needed: Vec::new()
@@ -53,6 +53,10 @@ impl DeferredChecks {
 
         for entry in &self.rrefable_types {
             writeln!(file, "red_idl::declare_rrefable!({});", entry)?;
+        }
+
+        for entry in &self.functional_types {
+            writeln!(file, "red_idl::declare_functional!({});", entry)?;
         }
 
         for entry in &self.safe_copy_needed {
@@ -142,6 +146,7 @@ fn verify_field_type(ty: &syn::Type, macros: &mut DeferredChecks) -> Result<Fiel
             }
 
             if is_opt_rref_path(p) {
+                // TODO: broken, doesn't check the type parameter
                 try_with_msg!(
                     verify_rref_type(ty, macros),
                     "type not rref-able")?;
@@ -196,12 +201,27 @@ fn verify_enum(e: &syn::ItemEnum, macros: &mut DeferredChecks) -> Result<()> {
     Ok(())
 }
 
+// TODO: get method signature checking working (after deadline)
+fn verify_trait(tr: &syn::ItemTrait, macros: &mut DeferredChecks) -> Result<()> {
+    for item in &tr.items {
+        match item {
+            syn::TraitItem::Method(_) => (),
+            _ => fail_with_msg!("traits must only contain methods")
+        }
+    }
+
+    macros.functional_types.push(tr.ident.to_string());
+
+    Ok(())
+}
+
 // Incomplete
 fn verify_item(item: &syn::Item, macros: &mut DeferredChecks) -> Result<()> {
     match item {
         syn::Item::Fn(f) => fail_with_msg!("bare function \"{}\" not permitted", f.sig.ident),
         syn::Item::Struct(s) => verify_struct(s, macros),
         syn::Item::Enum(e) => verify_enum(e, macros),
+        syn::Item::Trait(tr) => verify_trait(tr, macros),
         _ => Ok(())
     }
 }
