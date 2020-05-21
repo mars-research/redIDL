@@ -10,6 +10,8 @@ use std::fs;
 pub mod error;
 mod verify;
 mod usr_gen;
+mod proxies;
+mod create_proxies;
 
 use error::Result;
 
@@ -49,7 +51,9 @@ fn main() -> Result<()> {
     println!("Info: \"Cause: Compiler Error\" means a syntax problem");
 
     let root = path::Path::new(&args[1]);
-    usr_gen::gen_usr_crate(root)?;    
+    usr_gen::gen_usr_crate(root)?;
+    create_proxies::generate(root)?;
+    proxies::generate(root)?;
 
     Ok(())
 }
