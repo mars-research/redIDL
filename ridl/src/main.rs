@@ -11,7 +11,7 @@ pub mod error;
 mod verify;
 mod usr_gen;
 mod proxies;
-mod create_proxies;
+mod creation_proxies;
 
 use error::Result;
 
@@ -52,7 +52,7 @@ fn main() -> Result<()> {
 
     let root = path::Path::new(&args[1]);
     usr_gen::gen_usr_crate(root)?;
-    create_proxies::generate(root)?;
+    creation_proxies::generate(root)?;
     proxies::generate(root)?;
 
     Ok(())
