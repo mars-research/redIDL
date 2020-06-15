@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io::{Read, Write};
 
 // Long story short, each method of the Create* proxies must generate the whole irq/free fn call stuff
-// plus a whole load of other crap
+// plus a whole load of other stuff
 
 /*
     Either force all types to be globally qualified, or use this:
@@ -80,6 +80,22 @@ fn process_trait(tr: &syn::ItemTrait, file: &mut File) -> Result<()> {
     Ok(())
 }
 
+const PREAMBLE: &str = "\
+    use syscalls;\n\
+    use create;\n\
+    use create::*;\n\
+    use proxy;\n\
+    use usr;\n\
+    use spin::Mutex;\n\
+    use alloc::sync::Arc;\n\
+    use alloc::boxed::Box;\n\
+    use usr::error::Result;\n\
+    use crate::domain::load_domain;\n\
+    use crate::syscalls::{PDomain, Interrupt, Mmap};\n\
+    use crate::heap::PHeap;\n\
+    use crate::interrupt::{disable_irq, enable_irq};\n\
+    use crate::thread;\n";
+
 pub fn generate(root: &Path) -> Result<()> {
     let mut i_defs_file = File::open(crate::get_subpath(root, "sys/interfaces/create/src/lib.rs"))?;
     let mut i_defs = String::new();
@@ -95,6 +111,7 @@ pub fn generate(root: &Path) -> Result<()> {
         crate::create_subfile(root, "src/_gen.rs"),
         "couldn't open src/_gen.rs")?;
 
+    writeln!(file, "{}", PREAMBLE)?;
     for item in &ast.items {
         match item {
             syn::Item::Trait(tr) => try_with_msg!(

@@ -1,0 +1,26 @@
+- start moving IDL-involved types (such as the Result<> types) into the IDL crates
+- define a more uniform syntax for creation (perhaps annotating a trait with a #[create] macro that specifies the signature desired?)
+- Further revise domain traits until checks no longer fail and can be re-enabled
+- This work *must* be completed before generation
+- Here's a proposed example:
+
+#[create(Xv6Syscalls, BDev)]
+trait DomainFoo {
+    fn add_widget(RRef<Widget> widget, usize fromulate_size) -> Result<usize>;
+    fn remove_widget(usize widget_id) -> Result<()>;
+}
+
+- The idea is that this #[create()] annotation be treated as specifiying the inputs for the corresponding create()
+function. This way, the creation trait can be fully generated and the compiler does not have to deal with handwritten ones,
+as it does presently
+- It's become clear that macro-and-marker type checking isn't going to cut it, I've already run into problems with generic typenames, etc.
+- And I anticipate some fairly severe issues with checking argument types (the need to confirm that the type that the macro checks is the
+same as the type the compiler observed)
+- Unfortunately, if we can't leverage the rust compiler itself for semantics anymore, the complexity of the type-checker will balloon:
+it will have to keep track of which type is referred to where, and move type category information into a set of runtime checks
+- This will obviously significantly modify the existing verifier design.
+- Proxy generation / getters/setters are entirely secondary objectives to this, but getters/setters are mostly independent from the discussed,
+so could be completed earlier
+- There was an idea I was kicking around last week: if we spend most of our time building the compiler to find syntax it doesn't like,
+it might be evidence that we're trying to shoehorn this into Rust and would be better-served by a more well-designed IDL. Unfortunately, that does
+lose us all the benefit of the parsing library (another instance of ballooning complexity), and might not be wholly justified. 
