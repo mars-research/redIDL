@@ -59,6 +59,28 @@ pub fn declare_functional(input: TokenStream) -> TokenStream {
     }
 }
 
+// foo.idl
+/*
+    #[derive(SafeCopy)] // unfortunately, would parse, isn't rejected
+    struct Foo {
+        a: u8,
+        b: Foo
+    }
+
+    declare_safe_copy!(Foo); --> impl red_idl::SafeCopy for Foo
+    require_safe_copy!(Foo);
+
+    bar.idl
+
+    struct Bar {
+        a: Foo // What type does "Foo" refer to (Is foo defined here? or somewhere else? is it defined at all?)
+    }
+
+    require_safe_copy!(Foo);
+
+    idl crate -> generated crate -> compiled
+*/
+
 #[proc_macro]
 pub fn require_rrefable(input: TokenStream) -> TokenStream {
     let parsed : syn::Path = syn::parse(input).expect("failed to parse");

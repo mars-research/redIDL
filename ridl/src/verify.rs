@@ -23,7 +23,9 @@ pub struct DeferredChecks {
         - Is Copy (so we can bitwise copy)
         - Does not have references or pointers of any kind (so we know that we can copy it out of a domain,
             and it won't reference anything in that domain)
-        - Is a struct (for now)
+        //- Is a struct (for now)
+
+    Enum is blanket allow (RRefable)
     
     Introducing the *new* RRefable -
         - Extends SafeCopy, allowing OptRRef<> members
@@ -103,12 +105,19 @@ fn is_opt_rref_path(path: &syn::TypePath) -> bool {
     }
 
     // TODO: is this necessary?
-    if path.path.segments.len() != 1 {
+    if path.path.segments.len() != 1 { // Just OptRRef<>
         return false
     }
 
-    path.path.segments[0].ident.to_string() == "OptRRef"
+    path.path.segments[0].ident.to_string() == "OptRRef" // 
 }
+
+// impl red_idl::Functional for Foo {} (Disallow)
+/* Allow
+impl Foo {
+
+}
+*/
 
 fn verify_ident(id: &syn::Ident) -> Result<()> {
     if id == "OptRRef" || id == "RRef" {
@@ -125,11 +134,11 @@ fn verify_ident(id: &syn::Ident) -> Result<()> {
 
 fn verify_rref_type(ty: &syn::Type, macros: &mut DeferredChecks) -> Result<()> {
     match ty {
-        syn::Type::Path(p) => {
+        syn::Type::Path(p) => { // Example "Path"s: "DeferredChecks", "syn::Type", "usize"
             macros.rrefable_needed.push(quote::quote!(#p).to_string());
             Ok(())
         }
-        _ => Ok(())
+        _ => Ok(()) // OptRRef<&FooTrait>, OptRRef<usize*> (Revise)
     }
 }
 
@@ -162,9 +171,9 @@ fn verify_field_type(ty: &syn::Type, macros: &mut DeferredChecks) -> Result<Fiel
 
             Ok(FieldType::Normal)
         },
-        syn::Type::BareFn(_) => fail_with_msg!("fields cannot be function pointers"),
-        syn::Type::Ptr(_) => fail_with_msg!("fields cannot be pointers"),
-        _ => Ok(FieldType::Normal)
+        syn::Type::BareFn(_) => fail_with_msg!("fields cannot be function pointers"), // 
+        syn::Type::Ptr(_) => fail_with_msg!("fields cannot be pointers"), // 
+        _ => Ok(FieldType::Normal) // (Revise)
     }
 }
 
@@ -205,7 +214,7 @@ fn verify_enum(e: &syn::ItemEnum, macros: &mut DeferredChecks) -> Result<()> {
 fn verify_trait(tr: &syn::ItemTrait, macros: &mut DeferredChecks) -> Result<()> {
     for item in &tr.items {
         match item {
-            syn::TraitItem::Method(_) => (),
+            syn::TraitItem::Method(_) => (), // this is where signature checks *would* go, if they were enabled
             _ => fail_with_msg!("traits must only contain methods")
         }
     }
@@ -218,8 +227,8 @@ fn verify_trait(tr: &syn::ItemTrait, macros: &mut DeferredChecks) -> Result<()> 
 // Incomplete
 fn verify_item(item: &syn::Item, macros: &mut DeferredChecks) -> Result<()> {
     match item {
-        syn::Item::Fn(f) => fail_with_msg!("bare function \"{}\" not permitted", f.sig.ident),
-        syn::Item::Struct(s) => verify_struct(s, macros),
+        syn::Item::Fn(f) => fail_with_msg!("bare function \"{}\" not permitted", f.sig.ident), // 
+        syn::Item::Struct(s) => verify_struct(s, macros), //
         syn::Item::Enum(e) => verify_enum(e, macros),
         syn::Item::Trait(tr) => verify_trait(tr, macros),
         _ => Ok(())
