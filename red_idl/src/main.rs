@@ -1,9 +1,86 @@
 extern crate syn;
 
-mod walk;
-
 use std::fs;
 use std::env;
+
+use syn::visit;
+use visit::Visit;
+
+/*
+    Major issues with syn:
+    - No way to abort an AST walk
+    - Source location information not usable from outside a procedural macro
+*/
+
+// Things we reject: bare function types, pointers, etc.
+struct PruningVisitor {
+    context: Vec<String>
+}
+
+trait TraitTest {
+    fn foo(a: fn(u32) -> u32);
+}
+
+impl PruningVisitor {
+    fn get_context(&self) -> String {
+        let mut msg = String::new();
+        if self.context.len() == 0 {
+            msg
+        }
+        else {
+            msg = format!("{}", self.context[0]);
+            for extra in &self.context[1..] {
+                msg = format!("{}::{}", msg, extra)
+            }
+
+            msg
+        }
+    }
+
+    fn new() -> Self {
+        Self {
+            context: Vec::new()
+        }
+    }
+}
+
+// The approach to error handling is effectively just listing the chain of enclosing scopes
+// Right now, that's traits, structs, methods, and fields
+impl<'ast> Visit<'ast> for PruningVisitor {
+    fn visit_type_bare_fn(&mut self, i: &'ast syn::TypeBareFn) {
+        println!("\x1b[31merror:\x1b[0m Bare function types are not permitted");
+        println!("at: {}", self.get_context());
+        visit::visit_type_bare_fn(self, i);
+    }
+
+    fn visit_item_struct(&mut self, i: &'ast syn::ItemStruct) {
+        self.context.push(i.ident.to_string());
+        visit::visit_item_struct(self, i);
+        self.context.pop();
+    }
+
+    fn visit_field(&mut self, i: &'ast syn::Field) {
+        match &i.ident {
+            Some(id) => self.context.push(id.to_string()),
+            None => self.context.push("<unnamed field>".to_string())
+        }
+
+        visit::visit_field(self, i);
+        self.context.pop();
+    }
+
+    fn visit_item_trait(&mut self, i: &'ast syn::ItemTrait) {
+        self.context.push(i.ident.to_string());
+        visit::visit_item_trait(self, i);
+        self.context.pop();
+    }
+
+    fn visit_signature(&mut self, i: &'ast syn::Signature) {
+        self.context.push(i.ident.to_string());
+        visit::visit_signature(self, i);
+        self.context.pop();
+    }
+}
 
 fn main() {
     let args : Vec<String> = env::args().collect();
@@ -29,6 +106,6 @@ fn main() {
         }
     };
 
-    let null_pass = walk::NullPass {};
-    walk::walk_file(&ast, &null_pass);
+    let mut rejector = PruningVisitor::new();
+    rejector.visit_file(&ast);
 }
