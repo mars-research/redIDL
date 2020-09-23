@@ -3,9 +3,13 @@ extern crate syn;
 use std::fs;
 use std::env;
 
+mod utility;
 mod prune;
+mod proof_graph;
 
 use syn::visit::Visit;
+use prune::PruningVisitor;
+use proof_graph::{TypesCollectionPass};
 
 /*
     For nicer error contexts, we need to compute an attribute for every node that contains
@@ -46,12 +50,6 @@ use syn::visit::Visit;
     proxies can be passed around freely, 
 */
 
-enum TypeCategory {
-    Functional,
-    RRefable,
-    Copyable
-}
-
 fn main() {
     let args: Vec<String> = env::args().collect();
 
@@ -76,6 +74,10 @@ fn main() {
         }
     };
 
-    let mut rejector = prune::PruningVisitor::new();
+    let mut rejector = PruningVisitor::new();
     rejector.visit_file(&ast);
+
+    let mut type_collector = TypesCollectionPass::new();
+    type_collector.visit_file(&ast);
+    type_collector.type_heap.dump();
 }
