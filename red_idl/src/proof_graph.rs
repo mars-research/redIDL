@@ -27,6 +27,7 @@ impl TypeHeap {
     }
 }
 
+// Collects top-level structs and traits
 pub struct TypesCollectionPass<'ast> {
     should_index: bool,
     type_heap: TypeHeap,
@@ -35,10 +36,19 @@ pub struct TypesCollectionPass<'ast> {
     context: Vec<String>
 }
 
+// It's important to only collect type nodes that occur as children of specific nodes
+// So the walk keeps a track of which possible ancestor is currently nearest
+// Signature nodes can be children of TraitItemMethod, ImplItemMethod, or ItemFn
+// We're only interested in signatures of TraitItemMethod for context information
+
+// More interesting is the problem of only collecting top-level types
+// I.e., we want to collect top-level struct and trait definitions
+
 impl<'ast> TypesCollectionPass<'ast> {
     pub fn new() -> Self {
         Self {
-            should_index: false,
+            should_index: false, /* TODO: this is essentially being used to restrict our handling of certain nodes to subtrees we know how to handle.context
+                Better would be to collect these subtrees and run passes over that */
             type_heap: TypeHeap::new(),
             types: FlatMap::new(),
             locations: FlatMap::new(),
@@ -54,6 +64,10 @@ impl<'ast> TypesCollectionPass<'ast> {
             }
         }
     }
+}
+
+trait Foo {
+    fn foo(a: Vec<u32>) -> bool;
 }
 
 impl<'ast> Visit<'ast> for TypesCollectionPass<'ast> {
@@ -76,6 +90,26 @@ impl<'ast> Visit<'ast> for TypesCollectionPass<'ast> {
         self.should_index = false;
     }
 
+    fn visit_item_trait(&mut self, node: &'ast syn::ItemTrait) {
+        let id = &node.ident;
+        self.context.push(quote! {#id}.to_string());
+        visit::visit_item_trait(self, node);
+        self.context.pop();
+    }
+
+    fn visit_trait_item_method(&mut self, node: &'ast syn::TraitItemMethod) {
+        self.should_index = true;
+        visit::visit_trait_item_method(self, node);
+        self.should_index = false;
+    }
+
+    fn visit_signature(&mut self, node: &'ast syn::Signature) {
+        let id = &node.ident;
+        self.context.push(quote! {#id}.to_string());
+        visit::visit_signature(self, node);
+        self.context.pop();
+    }
+
     fn visit_type(&mut self, node: &'ast syn::Type) {
         if !self.should_index {
             return
@@ -95,14 +129,6 @@ impl<'ast> Visit<'ast> for TypesCollectionPass<'ast> {
         }
     }
 }
-
-// A state machine
-// Essentially visits top-level type and inserts constraints
-// Another way to think of it is as a parser that operates on nodes,
-// not tokens
-// In which case the AST / Visitor is basically useless
-// The fundamental issue here is that I have no good way of communicating
-// result information
 
 /*
     Queries over type trees:
