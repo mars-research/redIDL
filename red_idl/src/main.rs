@@ -1,15 +1,16 @@
 extern crate syn;
 
+#[macro_use]
+extern crate quote;
+
 use std::fs;
 use std::env;
 
 mod utility;
-mod prune;
 mod proof_graph;
 
 use syn::visit::Visit;
-use prune::PruningVisitor;
-use proof_graph::{TypesCollectionPass};
+use proof_graph::TypesCollectionPass;
 
 /*
     For nicer error contexts, we need to compute an attribute for every node that contains
@@ -74,10 +75,7 @@ fn main() {
         }
     };
 
-    let mut rejector = PruningVisitor::new();
-    rejector.visit_file(&ast);
-
     let mut type_collector = TypesCollectionPass::new();
     type_collector.visit_file(&ast);
-    type_collector.type_heap.dump();
+    type_collector.dump();
 }

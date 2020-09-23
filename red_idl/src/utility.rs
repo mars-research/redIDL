@@ -11,13 +11,14 @@ impl<K: std::cmp::Eq, V> FlatMap<K, V> {
         }
     }
 
-    pub fn insert(&mut self, key: K, value: V) {
+    pub fn insert(&mut self, key: K, value: V) -> bool {
         let mut iter = self.keys.iter();
         match iter.position(|k| k == &key) {
-            Some(_) => panic!(), // Type IDs are always unique
+            Some(_) => false,
             None => {
                 self.keys.push(key);
                 self.values.push(value);
+                true
             }
         }
     }
@@ -26,6 +27,14 @@ impl<K: std::cmp::Eq, V> FlatMap<K, V> {
         let mut iter = self.keys.iter();
         match iter.position(|k| k == &key) {
             Some(index) => Some(&self.values[index]),
+            None => None
+        }
+    }
+
+    pub fn get_mut(&mut self, key: K) -> Option<&mut V> {
+        let mut iter = self.keys.iter();
+        match iter.position(|k| k == &key) {
+            Some(index) => Some(&mut self.values[index]),
             None => None
         }
     }

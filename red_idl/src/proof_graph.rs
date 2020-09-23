@@ -1,42 +1,10 @@
 use syn::visit;
 use visit::Visit;
 use crate::utility::FlatMap;
-use quote;
 
 type TypeId = usize;
 
-enum TypeCategory {
-    Functional,
-    RRefable,
-    Copyable
-}
-
-#[derive(Clone, Copy)]
-enum TypeState {
-    None,
-    Error,
-    Reference,
-    RRef,
-    Copy
-}
-
-pub struct ProofGraphVisitor {
-    state: TypeState,
-    type_names: Vec<String>,
-    graph: FlatMap<(TypeId, TypeId), TypeCategory>
-}
-
-impl ProofGraphVisitor {
-    pub fn new() -> Self {
-        Self {
-            state: TypeState::None,
-            type_names: Vec::new(),
-            graph: FlatMap::new()
-        }
-    }
-}
-
-pub struct TypeHeap {
+struct TypeHeap {
     names: Vec<String>
 }
 
@@ -52,12 +20,6 @@ impl TypeHeap {
         }
     }
 
-    pub fn dump(&self) {
-        for name in &self.names {
-            println!("Type {}", name)
-        }
-    }
-
     fn new() -> Self {
         Self {
             names: Vec::new()
@@ -66,43 +28,71 @@ impl TypeHeap {
 }
 
 pub struct TypesCollectionPass<'ast> {
-    pub type_heap: TypeHeap,
-    types: FlatMap<TypeId, &'ast syn::Type>, // A string name? Really?
-    locations: FlatMap<TypeId, String>,
+    should_index: bool,
+    type_heap: TypeHeap,
+    types: FlatMap<TypeId, &'ast syn::Type>,
+    locations: FlatMap<TypeId, Vec<String>>,
     context: Vec<String>
 }
 
 impl<'ast> TypesCollectionPass<'ast> {
     pub fn new() -> Self {
         Self {
+            should_index: false,
             type_heap: TypeHeap::new(),
             types: FlatMap::new(),
             locations: FlatMap::new(),
             context: Vec::new()
         }
     }
+
+    pub fn dump(&self) {
+        for id in 0..self.type_heap.names.len() {
+            println!("Type \"{}\"", self.type_heap.names[id]);
+            for loc in self.locations.get(id).expect("location table did not exist") {
+                println!("\tAt {}", loc)
+            }
+        }
+    }
 }
 
 impl<'ast> Visit<'ast> for TypesCollectionPass<'ast> {
     fn visit_item_struct(&mut self, node: &'ast syn::ItemStruct) {
-        self.context.push(quote::quote! {#node.ident}.to_string());
+        let id = &node.ident;
+        self.context.push(quote! {#id}.to_string());
         visit::visit_item_struct(self, node);
         self.context.pop();
     }
 
     fn visit_field(&mut self, node: &'ast syn::Field) {
+        self.should_index = true;        
         match &node.ident {
-            Some(_) => self.context.push(quote::quote! {id}.to_string()),
+            Some(id) => self.context.push(quote! {#id}.to_string()),
             None => self.context.push("<unnamed field>".to_string())
         }
 
         visit::visit_field(self, node);
         self.context.pop();
+        self.should_index = false;
     }
 
     fn visit_type(&mut self, node: &'ast syn::Type) {
-        let id = self.type_heap.insert(quote::quote! {#node}.to_string());
-        self.types.insert(id, node);
+        if !self.should_index {
+            return
+        }
+
+        let id = self.type_heap.insert(quote! {#node}.to_string());
+        let mut loc = String::new();
+        for scope in &self.context {
+            loc = format!("{}::{}", loc, scope);
+        }
+
+        if self.types.insert(id, node) {
+            self.locations.insert(id, vec![loc]);
+        }
+        else {
+            self.locations.get_mut(id).expect("type use table did not exist").push(loc);
+        }
     }
 }
 
@@ -134,23 +124,3 @@ impl<'ast> Visit<'ast> for TypesCollectionPass<'ast> {
     (Notice that since RRef isn't copy, RRef and OptRRef have identical type semantics but exist in mutually exclusive contexts)
     Also, RRefs can only refer to OptRRefs indirectly (i.e., you'll never see RRef<OptRRef<u32>>)
 */
-
-impl<'ast> visit::Visit<'ast> for ProofGraphVisitor {
-    fn visit_path_segment(&mut self, node: &syn::PathSegment) {
-        // Intentional cutoff here
-        visit::visit_path_segment(self, node)
-    }
-
-    fn visit_angle_bracketed_generic_arguments(&mut self, node: &syn::AngleBracketedGenericArguments) {
-        println!("Generic types are unsupported (can't track their dependencies yet) ({})", quote::quote! {#node})
-    }
-
-    fn visit_path(&mut self, node: &syn::Path) {
-        if node.segments.len() > 1 {
-            println!("All IDL types must be in global scope ({})", quote::quote! {#node});
-            return
-        }
-
-        visit::visit_path(self, node)
-    }
-}

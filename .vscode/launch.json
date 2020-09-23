@@ -16,7 +16,7 @@
                 ]
             },
             "program": "${cargo:program}",
-            "args": ["./red_idl/src/walk.rs"]
+            "args": ["./red_idl/src/proof_graph.rs"]
         },
     ]
 }
