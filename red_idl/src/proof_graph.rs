@@ -36,14 +36,14 @@ impl ProofGraphVisitor {
     }
 }
 
-struct TypeHeap {
+pub struct TypeHeap {
     names: Vec<String>
 }
 
 impl TypeHeap {
     fn insert(&mut self, name: String) -> TypeId {
         let mut iter = self.names.iter();
-        match iter.position(|&v| v == name) {
+        match iter.position(|v| v == &name) {
             Some(id) => id,
             None => {
                 self.names.push(name);
@@ -53,7 +53,7 @@ impl TypeHeap {
     }
 
     pub fn dump(&self) {
-        for name in self.names {
+        for name in &self.names {
             println!("Type {}", name)
         }
     }
@@ -83,16 +83,16 @@ impl<'ast> TypesCollectionPass<'ast> {
     }
 }
 
-impl<'a: 'b, 'b> Visit<'a> for TypesCollectionPass<'b> {
-    fn visit_item_struct(&mut self, node: &syn::ItemStruct) {
+impl<'ast> Visit<'ast> for TypesCollectionPass<'ast> {
+    fn visit_item_struct(&mut self, node: &'ast syn::ItemStruct) {
         self.context.push(quote::quote! {#node.ident}.to_string());
         visit::visit_item_struct(self, node);
         self.context.pop();
     }
 
-    fn visit_field(&mut self, node: &syn::Field) {
-        match node.ident {
-            Some(id) => self.context.push(quote::quote! {id}.to_string()),
+    fn visit_field(&mut self, node: &'ast syn::Field) {
+        match &node.ident {
+            Some(_) => self.context.push(quote::quote! {id}.to_string()),
             None => self.context.push("<unnamed field>".to_string())
         }
 
@@ -100,9 +100,9 @@ impl<'a: 'b, 'b> Visit<'a> for TypesCollectionPass<'b> {
         self.context.pop();
     }
 
-    fn visit_type(&mut self, node: &'a syn::Type) {
+    fn visit_type(&mut self, node: &'ast syn::Type) {
         let id = self.type_heap.insert(quote::quote! {#node}.to_string());
-        self.types.insert(id, &node);
+        self.types.insert(id, node);
     }
 }
 
