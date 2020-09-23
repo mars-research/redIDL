@@ -10,7 +10,7 @@ mod utility;
 mod types;
 
 use syn::visit::Visit;
-use types::TypesCollectionPass;
+use types::{TypesCollectionPass, TypeDefinitions};
 
 /*
     For nicer error contexts, we need to compute an attribute for every node that contains
@@ -75,7 +75,15 @@ fn main() {
         }
     };
 
-    let mut type_collector = TypesCollectionPass::new();
+    let mut types = TypeDefinitions::new();
+    let mut type_collector = TypesCollectionPass::new(&mut types);
     type_collector.visit_file(&ast);
-    type_collector.dump();
+
+    for tr in types.traits {
+        println!("{}", quote! {#tr}.to_string())
+    }
+
+    for st in types.structs {
+        println!("{}", quote! {#st}.to_string())
+    }
 }

@@ -1,39 +1,30 @@
 use syn::visit;
 use visit::Visit;
-use crate::utility::FlatMap;
 
-type TypeId = usize;
-
-struct TypeHeap {
-    names: Vec<String>
+#[derive(Clone, Copy)]
+enum TypeAncestor {
+    File,
+    Module
 }
 
-impl TypeHeap {
-    fn insert(&mut self, name: String) -> TypeId {
-        let mut iter = self.names.iter();
-        match iter.position(|v| v == &name) {
-            Some(id) => id,
-            None => {
-                self.names.push(name);
-                self.names.len() - 1
-            }
-        }
-    }
+pub struct TypeDefinitions<'ast> {
+    pub traits: Vec<&'ast syn::ItemTrait>,
+    pub structs: Vec<&'ast syn::ItemStruct>
+}
 
-    fn new() -> Self {
+impl<'ast> TypeDefinitions<'ast> {
+    pub fn new() -> Self {
         Self {
-            names: Vec::new()
+            traits: Vec::new(),
+            structs: Vec::new()
         }
     }
 }
 
 // Collects top-level structs and traits
-pub struct TypesCollectionPass<'ast> {
-    should_index: bool,
-    type_heap: TypeHeap,
-    types: FlatMap<TypeId, &'ast syn::Type>,
-    locations: FlatMap<TypeId, Vec<String>>,
-    context: Vec<String>
+pub struct TypesCollectionPass<'ast, 'types> {
+    ancestor: TypeAncestor,
+    types: &'types mut TypeDefinitions<'ast>
 }
 
 // It's important to only collect type nodes that occur as children of specific nodes
@@ -44,89 +35,44 @@ pub struct TypesCollectionPass<'ast> {
 // More interesting is the problem of only collecting top-level types
 // I.e., we want to collect top-level struct and trait definitions
 
-impl<'ast> TypesCollectionPass<'ast> {
-    pub fn new() -> Self {
+impl<'ast, 'types> TypesCollectionPass<'ast, 'types> {
+    pub fn new(types: &'types mut TypeDefinitions<'ast>) -> Self {
         Self {
-            should_index: false, /* TODO: this is essentially being used to restrict our handling of certain nodes to subtrees we know how to handle.context
-                Better would be to collect these subtrees and run passes over that */
-            type_heap: TypeHeap::new(),
-            types: FlatMap::new(),
-            locations: FlatMap::new(),
-            context: Vec::new()
-        }
-    }
-
-    pub fn dump(&self) {
-        for id in 0..self.type_heap.names.len() {
-            println!("Type \"{}\"", self.type_heap.names[id]);
-            for loc in self.locations.get(id).expect("location table did not exist") {
-                println!("\tAt {}", loc)
-            }
+            ancestor: TypeAncestor::File,
+            types: types
         }
     }
 }
 
-trait Foo {
-    fn foo(a: Vec<u32>) -> bool;
-}
-
-impl<'ast> Visit<'ast> for TypesCollectionPass<'ast> {
-    fn visit_item_struct(&mut self, node: &'ast syn::ItemStruct) {
-        let id = &node.ident;
-        self.context.push(quote! {#id}.to_string());
-        visit::visit_item_struct(self, node);
-        self.context.pop();
-    }
-
-    fn visit_field(&mut self, node: &'ast syn::Field) {
-        self.should_index = true;        
-        match &node.ident {
-            Some(id) => self.context.push(quote! {#id}.to_string()),
-            None => self.context.push("<unnamed field>".to_string())
-        }
-
-        visit::visit_field(self, node);
-        self.context.pop();
-        self.should_index = false;
+impl<'ast, 'vecs> Visit<'ast> for TypesCollectionPass<'ast, 'vecs> {
+    fn visit_item_mod(&mut self, node: &'ast syn::ItemMod) {
+        let last_ancestor = self.ancestor;
+        self.ancestor = TypeAncestor::Module;
+        visit::visit_item_mod(self, node);
+        self.ancestor = last_ancestor
     }
 
     fn visit_item_trait(&mut self, node: &'ast syn::ItemTrait) {
-        let id = &node.ident;
-        self.context.push(quote! {#id}.to_string());
-        visit::visit_item_trait(self, node);
-        self.context.pop();
+        match self.ancestor {
+            TypeAncestor::File => self.types.traits.push(node),
+            TypeAncestor::Module => println!("IDL requires all types to be defined at global scope")
+        }
+
+        visit::visit_item_trait(self, node)
     }
 
-    fn visit_trait_item_method(&mut self, node: &'ast syn::TraitItemMethod) {
-        self.should_index = true;
-        visit::visit_trait_item_method(self, node);
-        self.should_index = false;
+    fn visit_item_struct(&mut self, node: &'ast syn::ItemStruct) {
+        match self.ancestor {
+            TypeAncestor::File => self.types.structs.push(node),
+            TypeAncestor::Module => ()
+        }
+
+        visit::visit_item_struct(self, node)
     }
 
-    fn visit_signature(&mut self, node: &'ast syn::Signature) {
-        let id = &node.ident;
-        self.context.push(quote! {#id}.to_string());
-        visit::visit_signature(self, node);
-        self.context.pop();
-    }
-
-    fn visit_type(&mut self, node: &'ast syn::Type) {
-        if !self.should_index {
-            return
-        }
-
-        let id = self.type_heap.insert(quote! {#node}.to_string());
-        let mut loc = String::new();
-        for scope in &self.context {
-            loc = format!("{}::{}", loc, scope);
-        }
-
-        if self.types.insert(id, node) {
-            self.locations.insert(id, vec![loc]);
-        }
-        else {
-            self.locations.get_mut(id).expect("type use table did not exist").push(loc);
-        }
+    fn visit_item_type(&mut self, node: &'ast syn::ItemType) {
+        println!("Typedefs are currently unsupported");
+        visit::visit_item_type(self, node)
     }
 }
 
