@@ -10,7 +10,7 @@ mod utility;
 mod types;
 
 use syn::visit::Visit;
-use types::{TypesCollectionPass, TypeDefinitions};
+use types::{TypesCollectionPass, TypeDefinitions, TraitSignatures, SignaturesCollectionPass};
 
 /*
     For nicer error contexts, we need to compute an attribute for every node that contains
@@ -79,11 +79,27 @@ fn main() {
     let mut type_collector = TypesCollectionPass::new(&mut types);
     type_collector.visit_file(&ast);
 
-    for tr in types.traits {
+    for tr in &types.traits {
         println!("{}", quote! {#tr}.to_string())
     }
 
     for st in types.structs {
         println!("{}", quote! {#st}.to_string())
+    }
+
+    let mut sigs = TraitSignatures::new();
+    for tr in &types.traits {
+        let start = sigs.signatures.len();
+        let mut pass = SignaturesCollectionPass::new(&mut sigs.signatures);
+        pass.visit_item_trait(tr);
+        let end = sigs.signatures.len();
+
+        if start == end {
+            println!("No methods recorded")
+        }
+        else {
+            println!("{} methods recorded", end - start);
+            sigs.ranges.push(start..end);
+        }
     }
 }

@@ -7,9 +7,27 @@ enum TypeAncestor {
     Module
 }
 
+trait Test {
+    fn foo(a: u32) -> u32;
+}
+
 pub struct TypeDefinitions<'ast> {
     pub traits: Vec<&'ast syn::ItemTrait>,
     pub structs: Vec<&'ast syn::ItemStruct>
+}
+
+pub struct TraitSignatures<'ast> {
+    pub signatures: Vec<&'ast syn::Signature>,
+    pub ranges: Vec<std::ops::Range<usize>>
+}
+
+impl<'ast> TraitSignatures<'ast> {
+    pub fn new() -> Self {
+        Self {
+            signatures: Vec::new(),
+            ranges: Vec::new()
+        }
+    }
 }
 
 impl<'ast> TypeDefinitions<'ast> {
@@ -25,6 +43,26 @@ impl<'ast> TypeDefinitions<'ast> {
 pub struct TypesCollectionPass<'ast, 'types> {
     ancestor: TypeAncestor,
     types: &'types mut TypeDefinitions<'ast>
+}
+
+// Intended to be run over trait subtrees
+pub struct SignaturesCollectionPass<'ast, 'sigs> {
+    signatures: &'sigs mut Vec<&'ast syn::Signature>
+}
+
+impl<'ast, 'sigs> SignaturesCollectionPass<'ast, 'sigs> {
+    pub fn new(sigs: &'sigs mut Vec<&'ast syn::Signature>) -> Self {
+        Self {
+            signatures: sigs
+        }
+    }
+}
+
+impl<'ast, 'sigs> Visit<'ast> for SignaturesCollectionPass<'ast, 'sigs> {
+    fn visit_signature(&mut self, node: &'ast syn::Signature) {
+        self.signatures.push(node);
+        visit::visit_signature(self, node);
+    }
 }
 
 // It's important to only collect type nodes that occur as children of specific nodes
