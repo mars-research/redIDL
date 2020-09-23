@@ -7,10 +7,10 @@ use std::fs;
 use std::env;
 
 mod utility;
-mod proof_graph;
+mod types;
 
 use syn::visit::Visit;
-use proof_graph::TypesCollectionPass;
+use types::TypesCollectionPass;
 
 /*
     For nicer error contexts, we need to compute an attribute for every node that contains
