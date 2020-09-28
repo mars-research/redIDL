@@ -26,29 +26,29 @@ use types::{SignaturesCollectionPass, TraitSignatures, TypeDefinitions, TypesCol
 	(questions about getters and setters, tuples), since it'll enforce it itself (we could prune type trees containing OptRRefs, to avoid getter/setter nonsense).
 */
 
-fn main() {
+fn load_ast(path: &str) -> Result<syn::File, String> {
+	let content = match fs::read_to_string(path) {
+		Ok(text) => Ok(text),
+		Err(error) => Err(format!("Couldn't open file: {}", error))
+	}?;
+
+	let ast = match syn::parse_file(&content) {
+		Ok(ast) => Ok(ast),
+		Err(error) => Err(format!("Couldn't parse file: {}", error))
+	}?;
+
+	Ok(ast)
+}
+
+fn main() -> Result<(), String> {
 	let args: Vec<String> = env::args().collect();
 
 	if args.len() != 2 {
 		println!("Usage (unstable interface): red_idl <test-path>");
-		return;
+		return Ok(());
 	}
 
-	let content = match fs::read_to_string(&args[1]) {
-		Ok(text) => text,
-		Err(error) => {
-			println!("Couldn't open file: {}", error);
-			return;
-		}
-	};
-
-	let ast = match syn::parse_file(&content) {
-		Ok(ast) => ast,
-		Err(error) => {
-			println!("Couldn't parse file: {}", error);
-			return;
-		}
-	};
+	let ast = load_ast(&args[1])?;
 
 	let mut types = TypeDefinitions::new();
 	let mut type_collector = TypesCollectionPass::new(&mut types);
@@ -76,4 +76,6 @@ fn main() {
 			sigs.ranges.push(start..end);
 		}
 	}
+
+	Ok(())
 }
