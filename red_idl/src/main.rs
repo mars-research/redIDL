@@ -4,13 +4,14 @@ extern crate syn;
 extern crate quote;
 
 use std::env;
-use std::fs;
+use std::fs::read_to_string;
 
 // mod utility;
 mod types;
+mod reject;
 
-use syn::visit::Visit;
-use types::{SignaturesCollectionPass, TraitSignatures, TypeDefinitions, TypesCollectionPass};
+use syn::{File, parse_file};
+use types::{collect_types, collect_method_signatures};
 
 /*
 	Thankfully, Dan seems to have gotten the auto trait stuff to work, so we just need to prune illegal types at the compiler-level,
@@ -26,13 +27,13 @@ use types::{SignaturesCollectionPass, TraitSignatures, TypeDefinitions, TypesCol
 	(questions about getters and setters, tuples), since it'll enforce it itself (we could prune type trees containing OptRRefs, to avoid getter/setter nonsense).
 */
 
-fn load_ast(path: &str) -> Result<syn::File, String> {
-	let content = match fs::read_to_string(path) {
+fn load_ast(path: &str) -> Result<File, String> {
+	let content = match read_to_string(path) {
 		Ok(text) => Ok(text),
 		Err(error) => Err(format!("Couldn't open file: {}", error))
 	}?;
 
-	let ast = match syn::parse_file(&content) {
+	let ast = match parse_file(&content) {
 		Ok(ast) => Ok(ast),
 		Err(error) => Err(format!("Couldn't parse file: {}", error))
 	}?;
@@ -49,33 +50,8 @@ fn main() -> Result<(), String> {
 	}
 
 	let ast = load_ast(&args[1])?;
-
-	let mut types = TypeDefinitions::new();
-	let mut type_collector = TypesCollectionPass::new(&mut types);
-	type_collector.visit_file(&ast);
-
-	for tr in &types.traits {
-		println!("{}", quote! {#tr}.to_string())
-	}
-
-	for st in types.structs {
-		println!("{}", quote! {#st}.to_string())
-	}
-
-	let mut sigs = TraitSignatures::new();
-	for tr in &types.traits {
-		let start = sigs.signatures.len();
-		let mut pass = SignaturesCollectionPass::new(&mut sigs.signatures);
-		pass.visit_item_trait(tr);
-		let end = sigs.signatures.len();
-
-		if start == end {
-			println!("No methods recorded")
-		} else {
-			println!("{} methods recorded", end - start);
-			sigs.ranges.push(start..end);
-		}
-	}
+	let types = collect_types(&ast);
+	let _sigs = collect_method_signatures(&types.traits);
 
 	Ok(())
 }
