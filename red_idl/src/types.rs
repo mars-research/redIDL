@@ -22,6 +22,10 @@ use visit::Visit;
     Also, RRefs can only refer to OptRRefs indirectly (i.e., you'll never see RRef<OptRRef<u32>>)
 */
 
+// Need to tag the final type-trees with a location in the source code (by scope)
+// i.e.: `trait Foo, method add_widget, parameter name`, or `struct Foo, field Bar`
+// _Could_ fold all of this type-collection machinery into a single tree-walk state machine
+
 #[derive(Clone, Copy)]
 enum TypeAncestor {
     File,

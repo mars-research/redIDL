@@ -25,6 +25,28 @@ use types::{collect_types, collect_method_signatures};
 	already implements the semantics we need. To support RRefable, we reject all syntax nodes for closure, function, or pointer types (blanket rejection of
 	non-exchangeable). If it's a dyn reference to a trait object, the trait must be Interface. If it's an OptRRef, we can skip it
 	(questions about getters and setters, tuples), since it'll enforce it itself (we could prune type trees containing OptRRefs, to avoid getter/setter nonsense).
+
+	- Need to tag the "Exchangeable" expressions (dyn references to proxies, etc.) with RRefable directly
+	- How to deal with generics? Functions are easy, since we place things in-scope
+		- apparently have to place marker trait requirement in struct decl
+		- i.e. decl re-writing (read: tree rewriting)
+		- we need to deduce what the type must be
+		- so marker traits for everything
+		- or a feed-through "checker" type
+
+	trait Marker {}
+
+	fn has_marker<T: Marker>(_: T) {}
+
+	struct Test<'a, T> {
+		a: &'a T
+	}
+
+	impl<'a, T> Test<'a, T> {
+		fn foo(&self) {
+			has_marker(self.a);
+		}
+	}
 */
 
 fn load_ast(path: &str) -> Result<File, String> {
