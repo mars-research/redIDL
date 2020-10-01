@@ -1,5 +1,3 @@
-#![feature(min_const_generics)]
-
 extern crate syn;
 
 #[macro_use]
