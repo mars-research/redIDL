@@ -1,3 +1,5 @@
+#![feature(min_const_generics)]
+
 extern crate syn;
 
 #[macro_use]
@@ -7,11 +9,12 @@ use std::env;
 use std::fs::read_to_string;
 
 // mod utility;
-mod types;
 mod reject;
+mod types;
 
-use syn::{File, parse_file};
-use types::{collect_types, collect_method_signatures};
+use syn::{parse_file, File};
+use syn::visit::Visit;
+use types::{collect_method_signatures, collect_types};
 
 /*
 	Thankfully, Dan seems to have gotten the auto trait stuff to work, so we just need to prune illegal types at the compiler-level,
@@ -47,23 +50,31 @@ use types::{collect_types, collect_method_signatures};
 			has_marker(self.a);
 		}
 	}
+
+	Let's not prioritize error messages at the moment, m'kay?
 */
 
-fn load_ast(path: &str) -> Result<File, String> {
+fn load_ast(path: &str) -> Result<File, ()> {
 	let content = match read_to_string(path) {
 		Ok(text) => Ok(text),
-		Err(error) => Err(format!("Couldn't open file: {}", error))
+		Err(error) => {
+			println!("Couldn't open file: {}", error);
+			Err(())
+		}
 	}?;
 
 	let ast = match parse_file(&content) {
 		Ok(ast) => Ok(ast),
-		Err(error) => Err(format!("Couldn't parse file: {}", error))
+		Err(error) => {
+			println!("Couldn't parse file: {}", error);
+			Err(())
+		}
 	}?;
 
 	Ok(ast)
 }
 
-fn main() -> Result<(), String> {
+fn main() -> Result<(), ()> {
 	let args: Vec<String> = env::args().collect();
 
 	if args.len() != 2 {
@@ -72,7 +83,9 @@ fn main() -> Result<(), String> {
 	}
 
 	let ast = load_ast(&args[1])?;
-	let types = collect_types(&ast);
+	let mut rejector = reject::RejectPass { is_legal: true };
+	rejector.visit_file(&ast);
+	let types = collect_types(&ast)?;
 	let _sigs = collect_method_signatures(&types.traits);
 
 	Ok(())

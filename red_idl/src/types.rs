@@ -8,7 +8,6 @@ use visit::Visit;
     - Is this a copy type?
     - Is this an OptRRef?
     - Is this type tree RRefable?
-    
     I propose:
     - TypesCollectionPass (to construct an array of localized type trees)
     - FunctionalRequiredPass
@@ -29,28 +28,29 @@ use visit::Visit;
 #[derive(Clone, Copy)]
 enum TypeAncestor {
     File,
-    Module
+    Module,
 }
 
 pub struct TypeDefinitions<'ast> {
     pub traits: Vec<&'ast ItemTrait>,
-    pub structs: Vec<&'ast ItemStruct>
+    pub structs: Vec<&'ast ItemStruct>,
 }
 
 pub struct TraitSignatures<'ast> {
     pub signatures: Vec<&'ast Signature>,
-    pub ranges: Vec<std::ops::Range<usize>>
+    pub ranges: Vec<std::ops::Range<usize>>,
 }
 
 // Collects top-level structs and traits
 pub struct TopLevelTypesPass<'ast, 'types> {
     ancestor: TypeAncestor,
-    types: &'types mut TypeDefinitions<'ast>
+    types: &'types mut TypeDefinitions<'ast>,
+    has_passed: bool,
 }
 
 // Intended to be run over trait subtrees
 pub struct SignaturesCollectionPass<'ast, 'sigs> {
-    signatures: &'sigs mut Vec<&'ast Signature>
+    signatures: &'sigs mut Vec<&'ast Signature>,
 }
 
 struct _ArgumentTypePass;
@@ -61,7 +61,7 @@ impl<'ast> TraitSignatures<'ast> {
     pub fn new() -> Self {
         Self {
             signatures: Vec::new(),
-            ranges: Vec::new()
+            ranges: Vec::new(),
         }
     }
 }
@@ -70,16 +70,14 @@ impl<'ast> TypeDefinitions<'ast> {
     pub fn new() -> Self {
         Self {
             traits: Vec::new(),
-            structs: Vec::new()
+            structs: Vec::new(),
         }
     }
 }
 
 impl<'ast, 'sigs> SignaturesCollectionPass<'ast, 'sigs> {
     pub fn new(sigs: &'sigs mut Vec<&'ast Signature>) -> Self {
-        Self {
-            signatures: sigs
-        }
+        Self { signatures: sigs }
     }
 }
 
@@ -102,8 +100,14 @@ impl<'ast, 'types> TopLevelTypesPass<'ast, 'types> {
     pub fn new(types: &'types mut TypeDefinitions<'ast>) -> Self {
         Self {
             ancestor: TypeAncestor::File,
-            types: types
+            types: types,
+            has_passed: true,
         }
+    }
+
+    fn fail(&mut self, msg: &str) {
+        println!("{}", msg);
+        self.has_passed = false;
     }
 }
 
@@ -118,7 +122,9 @@ impl<'ast, 'vecs> Visit<'ast> for TopLevelTypesPass<'ast, 'vecs> {
     fn visit_item_trait(&mut self, node: &'ast ItemTrait) {
         match self.ancestor {
             TypeAncestor::File => self.types.traits.push(node),
-            TypeAncestor::Module => println!("IDL requires all types to be defined at global scope")
+            TypeAncestor::Module => {
+                self.fail("IDL requires all types to be defined at global scope")
+            }
         }
 
         visit::visit_item_trait(self, node)
@@ -127,49 +133,53 @@ impl<'ast, 'vecs> Visit<'ast> for TopLevelTypesPass<'ast, 'vecs> {
     fn visit_item_struct(&mut self, node: &'ast ItemStruct) {
         match self.ancestor {
             TypeAncestor::File => self.types.structs.push(node),
-            TypeAncestor::Module => ()
+            TypeAncestor::Module => {
+                self.fail("IDL requires all types to be defined at global scope")
+            }
         }
 
         visit::visit_item_struct(self, node)
     }
 
     fn visit_item_type(&mut self, node: &'ast ItemType) {
-        println!("Typedefs are currently unsupported");
+        self.fail("Typedefs are currently unsupported");
         visit::visit_item_type(self, node)
     }
 }
 
-pub fn collect_types(ast: &File) -> TypeDefinitions {
-	let mut types = TypeDefinitions::new();
-	let mut type_collector = TopLevelTypesPass::new(&mut types);
-	type_collector.visit_file(&ast);
+pub fn collect_types(ast: &File) -> std::result::Result<TypeDefinitions, ()> {
+    let mut types = TypeDefinitions::new();
+    let mut type_collector = TopLevelTypesPass::new(&mut types);
+    type_collector.visit_file(&ast);
+    if type_collector.has_passed {
+        for tr in &types.traits {
+            println!("{}", quote! {#tr}.to_string())
+        }
 
-	for tr in &types.traits {
-		println!("{}", quote! {#tr}.to_string())
-	}
+        for st in &types.structs {
+            println!("{}", quote! {#st}.to_string())
+        }
 
-	for st in &types.structs {
-		println!("{}", quote! {#st}.to_string())
-	}
-
-	types
+        Ok(types)
+    } else {
+        Err(())
+    }
 }
 
 pub fn collect_method_signatures<'ast>(traits: &[&'ast ItemTrait]) -> TraitSignatures<'ast> {
     let mut sigs = TraitSignatures::new();
-	for tr in traits {
-		let start = sigs.signatures.len();
-		let mut pass = SignaturesCollectionPass::new(&mut sigs.signatures);
-		pass.visit_item_trait(tr);
+    for tr in traits {
+        let start = sigs.signatures.len();
+        let mut pass = SignaturesCollectionPass::new(&mut sigs.signatures);
+        pass.visit_item_trait(tr);
 
-		let end = sigs.signatures.len();
-		if start == end {
-			println!("No methods recorded")
-		} else {
-			println!("{} methods recorded", end - start);
-			sigs.ranges.push(start..end);
-		}
+        let end = sigs.signatures.len();
+        if start == end {
+            println!("No methods recorded")
+        } else {
+            println!("{} methods recorded", end - start);
+            sigs.ranges.push(start..end);
+        }
     }
-    
     sigs
 }

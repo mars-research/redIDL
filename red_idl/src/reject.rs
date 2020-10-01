@@ -1,8 +1,8 @@
 use syn::*;
 use visit::Visit;
 
-struct RejectPass {
-    is_legal: bool
+pub struct RejectPass {
+    pub is_legal: bool
 }
 
 impl<'ast> Visit<'ast> for RejectPass {
@@ -15,6 +15,12 @@ impl<'ast> Visit<'ast> for RejectPass {
     fn visit_type_ptr(&mut self, node: &'ast TypePtr) {
         println!("IDL does not allow pointer types");
         visit::visit_type_ptr(self, node);
+        self.is_legal = false;
+    }
+
+    fn visit_type_reference(&mut self, node: &'ast TypeReference) {
+        println!("IDL does not allow ref types");
+        visit::visit_type_reference(self, node);
         self.is_legal = false;
     }
 }
