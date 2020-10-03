@@ -1,4 +1,4 @@
-// Compiler requires that all paramter types implement this marker
+// Compiler requires that all parameter types implement this marker
 pub trait Exchangeable {}
 
 // Make proxy references exchangeable
@@ -84,5 +84,71 @@ impl<
 		H: Exchangeable,
 		I: Exchangeable,
 	> Exchangeable for (A, B, C, D, E, F, G, H, I)
+{
+}
+
+impl<
+		A: Exchangeable,
+		B: Exchangeable,
+		C: Exchangeable,
+		D: Exchangeable,
+		E: Exchangeable,
+		F: Exchangeable,
+		G: Exchangeable,
+		H: Exchangeable,
+		I: Exchangeable,
+		J: Exchangeable,
+	> Exchangeable for (A, B, C, D, E, F, G, H, I, J)
+{
+}
+
+impl<
+		A: Exchangeable,
+		B: Exchangeable,
+		C: Exchangeable,
+		D: Exchangeable,
+		E: Exchangeable,
+		F: Exchangeable,
+		G: Exchangeable,
+		H: Exchangeable,
+		I: Exchangeable,
+		J: Exchangeable,
+		K: Exchangeable,
+	> Exchangeable for (A, B, C, D, E, F, G, H, I, J, K)
+{
+}
+
+impl<
+		A: Exchangeable,
+		B: Exchangeable,
+		C: Exchangeable,
+		D: Exchangeable,
+		E: Exchangeable,
+		F: Exchangeable,
+		G: Exchangeable,
+		H: Exchangeable,
+		I: Exchangeable,
+		J: Exchangeable,
+		K: Exchangeable,
+		L: Exchangeable,
+	> Exchangeable for (A, B, C, D, E, F, G, H, I, J, K, L)
+{
+}
+
+impl<
+		A: Exchangeable,
+		B: Exchangeable,
+		C: Exchangeable,
+		D: Exchangeable,
+		E: Exchangeable,
+		F: Exchangeable,
+		G: Exchangeable,
+		H: Exchangeable,
+		I: Exchangeable,
+		J: Exchangeable,
+		K: Exchangeable,
+		L: Exchangeable,
+		M: Exchangeable,
+	> Exchangeable for (A, B, C, D, E, F, G, H, I, J, K, L, M)
 {
 }
