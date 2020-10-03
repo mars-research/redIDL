@@ -1,6 +1,7 @@
 #![feature(min_const_generics)]
 
 mod exchangeable;
+mod rrefable;
 
 use exchangeable::Exchangeable;
 
