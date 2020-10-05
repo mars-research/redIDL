@@ -1,5 +1,6 @@
 use syn::*;
 use visit::Visit;
+use quote::quote;
 
 /*
     Queries over type trees:

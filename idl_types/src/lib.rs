@@ -1,9 +1,10 @@
 #![feature(min_const_generics)]
 
-mod exchangeable;
-mod rrefable;
+pub mod exchangeable;
+pub mod rrefable;
 
-use exchangeable::Exchangeable;
+pub use exchangeable::Exchangeable;
+pub use rrefable::RRefable;
 
 // And RRef-style types check for this
 

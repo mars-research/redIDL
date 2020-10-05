@@ -1,7 +1,6 @@
 extern crate syn;
-
-#[macro_use]
 extern crate quote;
+extern crate idl_macros;
 
 use std::env;
 use std::fs::read_to_string;
@@ -13,6 +12,7 @@ mod types;
 use syn::{parse_file, File};
 use syn::visit::Visit;
 use types::{collect_method_signatures, collect_types};
+use idl_macros::*;
 
 /*
 	Thankfully, Dan seems to have gotten the auto trait stuff to work, so we just need to prune illegal types at the compiler-level,
@@ -52,6 +52,12 @@ use types::{collect_method_signatures, collect_types};
 	Let's not prioritize error messages at the moment, m'kay?
 */
 
+#[proxy]
+trait Foo {
+}
+
+fn test_proxy<T: idl_types::Proxy + ?Sized>() {}
+
 fn load_ast(path: &str) -> Result<File, ()> {
 	let content = match read_to_string(path) {
 		Ok(text) => Ok(text),
@@ -73,6 +79,9 @@ fn load_ast(path: &str) -> Result<File, ()> {
 }
 
 fn main() -> Result<(), ()> {
+	// Need to block trait impl blocks that use the idl_types directly
+	test_proxy::<dyn Foo>();
+
 	let args: Vec<String> = env::args().collect();
 
 	if args.len() != 2 {

@@ -26,36 +26,16 @@ impl<T: RRefable> RRefable for [T] {}
 
 impl<A: RRefable, B: RRefable> RRefable for (A, B) {}
 impl<A: RRefable, B: RRefable, C: RRefable> RRefable for (A, B, C) {}
-impl<A: RRefable, B: RRefable, C: RRefable, D: RRefable> RRefable
-	for (A, B, C, D)
+impl<A: RRefable, B: RRefable, C: RRefable, D: RRefable> RRefable for (A, B, C, D) {}
+impl<A: RRefable, B: RRefable, C: RRefable, D: RRefable, E: RRefable> RRefable for (A, B, C, D, E) {}
+
+impl<A: RRefable, B: RRefable, C: RRefable, D: RRefable, E: RRefable, F: RRefable> RRefable
+	for (A, B, C, D, E, F)
 {
 }
 
-impl<A: RRefable, B: RRefable, C: RRefable, D: RRefable, E: RRefable>
-	RRefable for (A, B, C, D, E)
-{
-}
-
-impl<
-		A: RRefable,
-		B: RRefable,
-		C: RRefable,
-		D: RRefable,
-		E: RRefable,
-		F: RRefable,
-	> RRefable for (A, B, C, D, E, F)
-{
-}
-
-impl<
-		A: RRefable,
-		B: RRefable,
-		C: RRefable,
-		D: RRefable,
-		E: RRefable,
-		F: RRefable,
-		G: RRefable,
-	> RRefable for (A, B, C, D, E, F, G)
+impl<A: RRefable, B: RRefable, C: RRefable, D: RRefable, E: RRefable, F: RRefable, G: RRefable>
+	RRefable for (A, B, C, D, E, F, G)
 {
 }
 
