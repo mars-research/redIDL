@@ -1,9 +1,17 @@
 // Compiler requires that all parameter types implement this marker
 pub trait Exchangeable {}
+pub trait MemberExchangeable {}
+
+/*
+	References to Proxies
+	Primitives
+	RRef types
+	anonymous composites of Copy types
+*/
 
 // Make proxy references exchangeable
-impl<T: crate::Proxy + ?Sized> Exchangeable for &T {}
-impl<T: crate::Proxy + ?Sized> Exchangeable for &mut T {}
+impl<T> Exchangeable for &T where T: crate::Proxy + ?Sized {}
+impl<T> Exchangeable for &mut T where T: crate::Proxy + ?Sized {}
 
 impl Exchangeable for i8 {}
 impl Exchangeable for i16 {}
@@ -22,8 +30,28 @@ impl Exchangeable for f64 {}
 impl Exchangeable for char {}
 impl Exchangeable for bool {}
 
+impl MemberExchangeable for i8 {}
+impl MemberExchangeable for i16 {}
+impl MemberExchangeable for i32 {}
+impl MemberExchangeable for i64 {}
+impl MemberExchangeable for i128 {}
+impl MemberExchangeable for isize {}
+impl MemberExchangeable for u8 {}
+impl MemberExchangeable for u16 {}
+impl MemberExchangeable for u32 {}
+impl MemberExchangeable for u64 {}
+impl MemberExchangeable for u128 {}
+impl MemberExchangeable for usize {}
+impl MemberExchangeable for f32 {}
+impl MemberExchangeable for f64 {}
+impl MemberExchangeable for char {}
+impl MemberExchangeable for bool {}
+
 impl<T: Exchangeable, const N: usize> Exchangeable for [T; N] {}
 impl<T: Exchangeable> Exchangeable for [T] {}
+
+impl<T: Exchangeable, const N: usize> MemberExchangeable for [T; N] {}
+impl<T: Exchangeable> MemberExchangeable for [T] {}
 
 impl<A: Exchangeable, B: Exchangeable> Exchangeable for (A, B) {}
 impl<A: Exchangeable, B: Exchangeable, C: Exchangeable> Exchangeable for (A, B, C) {}
@@ -150,5 +178,133 @@ impl<
 		L: Exchangeable,
 		M: Exchangeable,
 	> Exchangeable for (A, B, C, D, E, F, G, H, I, J, K, L, M)
+{
+}
+
+impl<A: MemberExchangeable, B: MemberExchangeable> MemberExchangeable for (A, B) {}
+impl<A: MemberExchangeable, B: MemberExchangeable, C: MemberExchangeable> MemberExchangeable for (A, B, C) {}
+impl<A: MemberExchangeable, B: MemberExchangeable, C: MemberExchangeable, D: MemberExchangeable> MemberExchangeable
+	for (A, B, C, D)
+{
+}
+
+impl<A: MemberExchangeable, B: MemberExchangeable, C: MemberExchangeable, D: MemberExchangeable, E: MemberExchangeable>
+	MemberExchangeable for (A, B, C, D, E)
+{
+}
+
+impl<
+		A: MemberExchangeable,
+		B: MemberExchangeable,
+		C: MemberExchangeable,
+		D: MemberExchangeable,
+		E: MemberExchangeable,
+		F: MemberExchangeable,
+	> MemberExchangeable for (A, B, C, D, E, F)
+{
+}
+
+impl<
+		A: MemberExchangeable,
+		B: MemberExchangeable,
+		C: MemberExchangeable,
+		D: MemberExchangeable,
+		E: MemberExchangeable,
+		F: MemberExchangeable,
+		G: MemberExchangeable,
+	> MemberExchangeable for (A, B, C, D, E, F, G)
+{
+}
+
+impl<
+		A: MemberExchangeable,
+		B: MemberExchangeable,
+		C: MemberExchangeable,
+		D: MemberExchangeable,
+		E: MemberExchangeable,
+		F: MemberExchangeable,
+		G: MemberExchangeable,
+		H: MemberExchangeable,
+	> MemberExchangeable for (A, B, C, D, E, F, G, H)
+{
+}
+
+impl<
+		A: MemberExchangeable,
+		B: MemberExchangeable,
+		C: MemberExchangeable,
+		D: MemberExchangeable,
+		E: MemberExchangeable,
+		F: MemberExchangeable,
+		G: MemberExchangeable,
+		H: MemberExchangeable,
+		I: MemberExchangeable,
+	> MemberExchangeable for (A, B, C, D, E, F, G, H, I)
+{
+}
+
+impl<
+		A: MemberExchangeable,
+		B: MemberExchangeable,
+		C: MemberExchangeable,
+		D: MemberExchangeable,
+		E: MemberExchangeable,
+		F: MemberExchangeable,
+		G: MemberExchangeable,
+		H: MemberExchangeable,
+		I: MemberExchangeable,
+		J: MemberExchangeable,
+	> MemberExchangeable for (A, B, C, D, E, F, G, H, I, J)
+{
+}
+
+impl<
+		A: MemberExchangeable,
+		B: MemberExchangeable,
+		C: MemberExchangeable,
+		D: MemberExchangeable,
+		E: MemberExchangeable,
+		F: MemberExchangeable,
+		G: MemberExchangeable,
+		H: MemberExchangeable,
+		I: MemberExchangeable,
+		J: MemberExchangeable,
+		K: MemberExchangeable,
+	> MemberExchangeable for (A, B, C, D, E, F, G, H, I, J, K)
+{
+}
+
+impl<
+		A: MemberExchangeable,
+		B: MemberExchangeable,
+		C: MemberExchangeable,
+		D: MemberExchangeable,
+		E: MemberExchangeable,
+		F: MemberExchangeable,
+		G: MemberExchangeable,
+		H: MemberExchangeable,
+		I: MemberExchangeable,
+		J: MemberExchangeable,
+		K: MemberExchangeable,
+		L: MemberExchangeable,
+	> MemberExchangeable for (A, B, C, D, E, F, G, H, I, J, K, L)
+{
+}
+
+impl<
+		A: MemberExchangeable,
+		B: MemberExchangeable,
+		C: MemberExchangeable,
+		D: MemberExchangeable,
+		E: MemberExchangeable,
+		F: MemberExchangeable,
+		G: MemberExchangeable,
+		H: MemberExchangeable,
+		I: MemberExchangeable,
+		J: MemberExchangeable,
+		K: MemberExchangeable,
+		L: MemberExchangeable,
+		M: MemberExchangeable,
+	> MemberExchangeable for (A, B, C, D, E, F, G, H, I, J, K, L, M)
 {
 }

@@ -1,4 +1,13 @@
 pub trait RRefable {}
+pub trait ElementRRefable {} // Optional<RRef<>> is not this
+pub trait FieldRRefable {} // but this
+
+/*
+	We cannot allow any sort of anonymous composites of RRef-based types
+	i.e. tuples or arrays of ElementRRefable are RRefable
+	named composites of FieldRRefable (including Optional<RRef<>>)
+	are RRefable, references to Proxys are RRefable
+*/
 
 // Make proxy references exchangeable
 impl<T: crate::Proxy + ?Sized> RRefable for &T {}
