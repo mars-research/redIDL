@@ -1,5 +1,5 @@
 [package]
-name = "idl_types"
+name = "idlc"
 version = "0.1.0"
 authors = ["David Detweiler <daviddetweiler1@gmail.com>"]
 edition = "2018"
