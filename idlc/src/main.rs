@@ -85,6 +85,30 @@ fn clean_stale_glue_modules(glue_root: &Path) {
     all Paths are represented as enums of either an unresolved path or of a typeid pointing at its definition
 */
 
+struct ModVisit {
+    level: isize,
+}
+
+impl<'ast> ModVisit {
+    fn visit_module(&mut self, node: &'ast mod_map::Module) {
+        for _ in 0..self.level {
+            print!("\t");
+        }
+
+        println!(
+            "Module \"{}\" had {} submodules",
+            node.name,
+            node.submodules.len()
+        );
+
+        self.level += 1;
+        for submod in &node.submodules {
+            self.visit_module(submod)
+        }
+        self.level -= 1;
+    }
+}
+
 fn main() {
     // Accepts a non-empty set of domains to process the IDL subdir from
     // Immediately preceded by the path to the glue crate, which will be automatically cleaned of everything
@@ -97,14 +121,25 @@ fn main() {
     }
 
     let glue_crate = Path::new(&args[1]);
-    let domain_crates: Vec<PathBuf> = args[2..].iter().map(|s| Path::new(s).join("idl")).collect();
-    for p in &domain_crates {
-        let dom_mod = mod_map::try_lower_dir_module(&p).expect("domain could not be lowered");
-        println!(
-            "Domain {} had {} submodules",
-            dom_mod.name,
-            dom_mod.submodules.len()
-        )
+    
+    // Plan is to have a fake root and sys module that have type resolution entries only, and no AST
+    // As in the case of the sys module, we aren't generating anything, and for the root module of the crate
+    // we're generating all of it
+    
+    // We can prototype type resolution on a by-domain basis, since all we need to do is merge them into a larger tree
+    // to integrate everything else
+    
+    // This segment should probably live in mod_map
+    let domain_crates: Vec<(String, PathBuf)> = args[2..]
+        .iter()
+        .map(|s| Path::new(s))
+        .map(|p| (mod_map::get_file_stem(p), Path::new(p).join("idl")))
+        .collect();
+    for (name, path) in domain_crates {
+        let mut dom_mod = mod_map::try_lower_dir_module(&path).expect("domain could not be lowered");
+        dom_mod.name = name; // the idl module is "folded" into the domain
+        let mut visit = ModVisit { level: 0 };
+        visit.visit_module(&dom_mod)
     }
 
     clean_stale_glue_modules(glue_crate);
