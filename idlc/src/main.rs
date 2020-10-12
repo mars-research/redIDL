@@ -1,11 +1,9 @@
-use quote::quote;
 use std::env::args;
-use std::fs::{read_dir, read_to_string, remove_dir_all, remove_file};
+use std::fs::{read_dir, remove_dir_all, remove_file};
 use std::path::{Path, PathBuf};
-use syn::parse_file;
-use syn::visit::Visit;
 
 mod ir;
+mod mod_map;
 
 /*
     1. Parse all given IDL directories
@@ -82,34 +80,6 @@ fn clean_stale_glue_modules(glue_root: &Path) {
     }
 }
 
-struct TypeVisit;
-
-impl<'ast> Visit<'ast> for TypeVisit {
-    fn visit_type(&mut self, node: &'ast syn::Type) {
-        let result = ir::try_lower_spec_exchangeable_type(node);
-        if let None = result {
-            println!(
-                "This type could not be speculated as exchangeable: {}",
-                quote! {#node}
-            )
-        }
-    }
-}
-
-struct Tester;
-
-impl<'ast> Visit<'ast> for Tester {
-    fn visit_trait_item_method(&mut self, node: &'ast syn::TraitItemMethod) {
-        let sig = &node.sig;
-        println!("In method \"{}\"", sig.ident);
-
-        for fn_arg in &sig.inputs {
-            let mut visitor = TypeVisit {};
-            visitor.visit_fn_arg(fn_arg);
-        }
-    }
-}
-
 /*
     Source map built into tree, rib hierarchy is implied, path resolution doable in single pass
     all Paths are represented as enums of either an unresolved path or of a typeid pointing at its definition
@@ -128,25 +98,13 @@ fn main() {
 
     let glue_crate = Path::new(&args[1]);
     let domain_crates: Vec<PathBuf> = args[2..].iter().map(|s| Path::new(s).join("idl")).collect();
-
-    for module in domain_crates {
-        if !module.exists() {
-            panic!("idl module was not found at {:?}", module);
-        }
-
-        for item in read_dir(module).expect("Could not open IDL sources") {
-            let entry = item.expect("");
-            let meta = entry.metadata().expect("");
-            if meta.file_type().is_dir() {
-                continue;
-            }
-
-            let ast =
-                parse_file(&read_to_string(entry.path()).expect("Could not open source file"))
-                    .expect("Could not parse source file");
-            let mut visitor = Tester {};
-            visitor.visit_file(&ast);
-        }
+    for p in &domain_crates {
+        let dom_mod = mod_map::try_lower_dir_module(&p).expect("domain could not be lowered");
+        println!(
+            "Domain {} had {} submodules",
+            dom_mod.name,
+            dom_mod.submodules.len()
+        )
     }
 
     clean_stale_glue_modules(glue_crate);

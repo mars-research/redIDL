@@ -1,20 +1,20 @@
 use syn::*;
 
 pub struct SpecRpcTraitRef<'ast> {
-    path: &'ast Path,
+    _path: &'ast Path,
 }
 
 pub struct SpecRRefLikeOrBitwise<'ast> {
-    path: &'ast Path,
+    _path: &'ast Path,
 }
 
 pub struct SpecRRefLikeImmutRef<'ast> {
-    path: &'ast Path,
-    verbatim_args: &'ast AngleBracketedGenericArguments,
+    _path: &'ast Path,
+    _verbatim_args: &'ast AngleBracketedGenericArguments,
 }
 
 pub struct SpecBitwise<'ast> {
-    verbatim: &'ast Type,
+    _verbatim: &'ast Type,
 }
 
 pub enum SpecExchangeableType<'ast> {
@@ -22,34 +22,6 @@ pub enum SpecExchangeableType<'ast> {
     SpecRRefLikeImmutRef(SpecRRefLikeImmutRef<'ast>),
     SpecRRefLikeOrBitwise(SpecRRefLikeOrBitwise<'ast>), // Should be eliminated by the time paths are resolved
     SpecBitwise(SpecBitwise<'ast>),
-}
-
-pub struct _RpcMethod<'ast> {
-    name: &'ast Ident,                          // TODO: is Ident cheap to copy / clone?
-    arguments: Vec<SpecExchangeableType<'ast>>, // TODO: won't be using spec nodes at the end of the day
-    is_static: bool,
-}
-
-pub struct _RpcTraitDef<'ast> {
-    name: &'ast Ident,
-    methods: Vec<_RpcMethod<'ast>>,
-}
-
-pub struct _StructDef<'ast> {
-    name: &'ast Ident,
-    field_names: Vec<&'ast Ident>,
-    field_types: Vec<&'ast Type>,
-}
-
-pub enum _IdlDef<'ast> {
-    RpcTraitDef(_RpcTraitDef<'ast>),
-    StructDef(_StructDef<'ast>),
-}
-
-pub struct _Module<'ast> {
-    verbatim: Vec<&'ast Item>,
-    use_statements: Vec<&'ast ItemUse>,
-    idl_defs: Vec<&'ast _IdlDef<'ast>>,
 }
 
 fn try_lower_rpc_trait_ref<'ast>(root: &'ast syn::TypeReference) -> Option<SpecRpcTraitRef<'ast>> {
@@ -80,7 +52,7 @@ fn try_lower_rpc_trait_ref<'ast>(root: &'ast syn::TypeReference) -> Option<SpecR
     }
 
     Some(SpecRpcTraitRef {
-        path: &tr_bound.path,
+        _path: &tr_bound.path,
     })
 }
 
@@ -107,8 +79,8 @@ fn try_lower_spec_rref_like_immut_ref<'ast>(
     };
 
     Some(SpecRRefLikeImmutRef {
-        path: &path,
-        verbatim_args: &args,
+        _path: &path,
+        _verbatim_args: &args,
     })
 }
 
@@ -124,7 +96,7 @@ fn try_lower_spec_rref_like_or_bitwise<'ast>(
         _ => (),
     }
 
-    Some(SpecRRefLikeOrBitwise { path: &root.path })
+    Some(SpecRRefLikeOrBitwise { _path: &root.path })
 }
 
 pub fn try_lower_spec_exchangeable_type<'ast>(root: &'ast Type) -> Option<SpecExchangeableType> {
@@ -148,7 +120,7 @@ pub fn try_lower_spec_exchangeable_type<'ast>(root: &'ast Type) -> Option<SpecEx
         Type::Ptr(_) => None,
         Type::BareFn(_) => None,
         _ => Some(SpecExchangeableType::SpecBitwise(SpecBitwise {
-            verbatim: root,
+            _verbatim: root,
         })),
     }
 }
