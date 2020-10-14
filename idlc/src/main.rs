@@ -1,9 +1,11 @@
-use std::env::args;
-use std::fs::{read_dir, remove_dir_all, remove_file};
-use std::path::{Path, PathBuf};
-
 mod ir;
-mod mod_map;
+
+use ir::*;
+use std::env::args;
+use std::fs::{read_dir, read_to_string, remove_dir_all, remove_file};
+use std::path::Path;
+use syn::parse_file;
+use syn::visit::*;
 
 /*
     1. Parse all given IDL directories
@@ -80,34 +82,61 @@ fn clean_stale_glue_modules(glue_root: &Path) {
     }
 }
 
-/*
-    Source map built into tree, rib hierarchy is implied, path resolution doable in single pass
-    all Paths are represented as enums of either an unresolved path or of a typeid pointing at its definition
-*/
+// So how is the IR AST actually built?
+// We run into borrow-checking issues
+// Could probably just box this stuff
+// But a vector of boxes is just nasty
+// We need absolute references
+// or a reference that is known to live long enough
+// Let's box it by default
 
-struct ModVisit {
-    level: isize,
-}
+fn parse_idl_modules<'ast>(domains: &Vec<&Path>) -> Result<Vec<Module<'ast>>, ()> {
+    let mut modules = Vec::<Module>::new();
+    for path in domains {
+        let idl_path = path.join("idl.rs");
+        let source = match read_to_string(&idl_path) {
+            Ok(source) => source,
+            Err(err) => {
+                println!("\x1b[31merror:\x1b[0m {} ({:?})", err, idl_path);
+                return Err(());
+            }
+        };
 
-impl<'ast> ModVisit {
-    fn visit_module(&mut self, node: &'ast mod_map::Module) {
-        for _ in 0..self.level {
-            print!("\t");
-        }
+        let ast = match parse_file(&source) {
+            Ok(ast) => ast,
+            Err(err) => {
+                println!("\x1b[31merror:\x1b[0m {} ({:?})", err, idl_path);
+                return Err(());
+            }
+        };
 
-        println!(
-            "Module \"{}\" had {} submodules",
-            node.name,
-            node.submodules.len()
-        );
+        let name = path
+            .file_name()
+            .expect("a directory name was expected but none was found")
+            .to_str()
+            .expect("directory name was not valid unicode")
+            .to_string();
 
-        self.level += 1;
-        for submod in &node.submodules {
-            self.visit_module(submod)
-        }
-        self.level -= 1;
+        let module = Module {
+            name: name,
+            raw_ast: ast,
+            submodules: Vec::new(),
+            items: Vec::new(),
+        };
+
+        modules.push(module);
     }
+
+    Ok(modules)
 }
+
+/*
+    NOTE: Deferring support for relative type paths, use statements, and generalized module collection
+    The important things are getting absolute path type resolution working,
+    constructing the type layout trees (all types, even anonymous ones, end up in a type table for memoization; this
+    type table (tables?) is also used for TypeIdentifiable generation), then lowering those trees. Generation is
+    *trivial* compared to this.
+*/
 
 fn main() {
     // Accepts a non-empty set of domains to process the IDL subdir from
@@ -121,26 +150,37 @@ fn main() {
     }
 
     let glue_crate = Path::new(&args[1]);
-    
+    let domain_paths: Vec<&Path> = args[2..].iter().map(|s| Path::new(s)).collect();
+    let idl_mods = match parse_idl_modules(&domain_paths) {
+        Ok(ret) => ret,
+        Err(_) => return,
+    };
+
+    // The pseudo-identifier "crate" in every module is specially interpreted as referring to this root module
+    // Similarly, references to the crate::sys crate (implemented via a sentinel module ID?) will not refer to
+    // any actual module, but are specially handled, as these are types known to the compiler to be exchangeable in
+    // certain contexts. For example, crate::sys::Syscalls, a trait that is always allowed to be passed, even though it
+    // would not ordinarily pass type-checking
+
+    // More accurately, we use "fake" types
+
+    let lib_mod = Module {
+        name: "lib".to_string(),
+        raw_ast: syn::File {
+            attrs: Vec::new(),
+            shebang: None,
+            items: Vec::new(),
+        },
+        submodules: idl_mods,
+        items: Vec::new(),
+    };
+
     // Plan is to have a fake root and sys module that have type resolution entries only, and no AST
     // As in the case of the sys module, we aren't generating anything, and for the root module of the crate
     // we're generating all of it
-    
     // We can prototype type resolution on a by-domain basis, since all we need to do is merge them into a larger tree
     // to integrate everything else
-    
     // This segment should probably live in mod_map
-    let domain_crates: Vec<(String, PathBuf)> = args[2..]
-        .iter()
-        .map(|s| Path::new(s))
-        .map(|p| (mod_map::get_file_stem(p), Path::new(p).join("idl")))
-        .collect();
-    for (name, path) in domain_crates {
-        let mut dom_mod = mod_map::try_lower_dir_module(&path).expect("domain could not be lowered");
-        dom_mod.name = name; // the idl module is "folded" into the domain
-        let mut visit = ModVisit { level: 0 };
-        visit.visit_module(&dom_mod)
-    }
 
     clean_stale_glue_modules(glue_crate);
 }
