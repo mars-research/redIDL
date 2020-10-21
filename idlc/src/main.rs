@@ -6,6 +6,7 @@ use std::fs::{read_dir, read_to_string, remove_dir_all, remove_file};
 use std::path::Path;
 use syn::parse_file;
 use syn::visit::*;
+use syn::*;
 
 /*
     1. Parse all given IDL directories
@@ -90,44 +91,156 @@ fn clean_stale_glue_modules(glue_root: &Path) {
 // or a reference that is known to live long enough
 // Let's box it by default
 
-fn parse_idl_modules<'ast>(domains: &Vec<&Path>) -> Result<Vec<Module<'ast>>, ()> {
-    let mut modules = Vec::<Module>::new();
+struct DomainRpcTypeCollection<'ast> {
+    types: Vec<&'ast syn::Type>,
+}
+
+struct DomainRpcCollection<'ast> {
+    rpcs: Vec<DomainRpc<'ast>>,
+}
+
+struct ModItemCollection<'ast> {
+    items: Vec<ModItem<'ast>>,
+}
+
+struct StructDefCollection<'ast> {
+    generics: Vec<String>,
+    types: Vec<&'ast Type>,
+}
+
+// We have no need to iterate deeper in any of these
+
+impl<'ast> Visit<'ast> for DomainRpcTypeCollection<'ast> {
+    fn visit_type(&mut self, node: &'ast Type) {
+        self.types.push(node)
+    }
+}
+
+impl<'ast> Visit<'ast> for DomainRpcCollection<'ast> {
+    fn visit_trait_item_method(&mut self, node: &'ast TraitItemMethod) {
+        self.rpcs.push(DomainRpc {
+            raw: node,
+            raw_types: collect_domain_rpc_types(node),
+        })
+    }
+}
+
+impl<'ast> Visit<'ast> for StructDefCollection<'ast> {
+    fn visit_type_param(&mut self, node: &'ast TypeParam) {
+        self.generics.push(node.ident.to_string())
+    }
+
+    fn visit_type(&mut self, node: &'ast Type) {
+        self.types.push(node)
+    }
+}
+
+impl<'ast> Visit<'ast> for ModItemCollection<'ast> {
+    fn visit_item_trait(&mut self, node: &'ast ItemTrait) {
+        let ir_node = DomainTrait {
+            raw: node,
+            name: node.ident.to_string(),
+            methods: collect_domain_rpcs(node),
+        };
+
+        self.items.push(ModItem::DomainTrait(Box::new(ir_node)))
+    }
+
+    fn visit_item_struct(&mut self, node: &'ast ItemStruct) {
+        let (gens, types) = collect_struct_def(node);
+        let ir_node = StructDef {
+            name: node.ident.to_string(),
+            raw: node,
+            generic_names: gens,
+            raw_types: types,
+        };
+
+        self.items.push(ModItem::StructDef(Box::new(ir_node)))
+    }
+}
+
+fn collect_domain_rpc_types<'ast>(node: &'ast TraitItemMethod) -> Vec<&'ast Type> {
+    let mut visit = DomainRpcTypeCollection { types: Vec::new() };
+    visit.visit_trait_item_method(node);
+    visit.types
+}
+
+fn collect_domain_rpcs<'ast>(node: &'ast ItemTrait) -> Vec<DomainRpc<'ast>> {
+    let mut visit = DomainRpcCollection { rpcs: Vec::new() };
+    visit.visit_item_trait(node);
+    visit.rpcs
+}
+
+fn collect_mod_items<'ast>(node: &'ast File) -> Vec<ModItem<'ast>> {
+    let mut visit = ModItemCollection { items: Vec::new() };
+    visit.visit_file(node);
+    visit.items
+}
+
+fn collect_struct_def<'ast>(node: &'ast ItemStruct) -> (Vec<String>, Vec<&'ast Type>) {
+    let mut visit = StructDefCollection {
+        generics: Vec::new(),
+        types: Vec::new(),
+    };
+    visit.visit_item_struct(node);
+    (visit.generics, visit.types)
+}
+
+fn produce_module<'ast>(name: &str, ast: &'ast File) -> Module<'ast> {
+    Module {
+        name: name.to_string(),
+        submodules: Vec::new(),
+        items: collect_mod_items(ast),
+    }
+}
+
+// TODO: more consistent error handling
+
+fn get_dir_name(path: &Path) -> String {
+    path.file_name()
+        .expect("a directory name was expected but none was found")
+        .to_str()
+        .expect("directory name was not valid unicode")
+        .to_string()
+}
+
+fn load_ast(path: &Path) -> std::result::Result<syn::File, ()> {
+    let source = match read_to_string(&path) {
+        Ok(source) => source,
+        Err(err) => {
+            println!("\x1b[31merror:\x1b[0m {} ({:?})", err, path);
+            return Err(());
+        }
+    };
+
+    match parse_file(&source) {
+        Ok(ast) => Ok(ast),
+        Err(err) => {
+            println!("\x1b[31merror:\x1b[0m {} ({:?})", err, path);
+            return Err(());
+        }
+    }
+}
+
+fn load_idl_modules<'ast>(domains: &Vec<&Path>) -> std::result::Result<Vec<(String, File)>, ()> {
+    let mut modules = Vec::<(String, File)>::new();
     for path in domains {
-        let idl_path = path.join("idl.rs");
-        let source = match read_to_string(&idl_path) {
-            Ok(source) => source,
-            Err(err) => {
-                println!("\x1b[31merror:\x1b[0m {} ({:?})", err, idl_path);
-                return Err(());
-            }
-        };
-
-        let ast = match parse_file(&source) {
-            Ok(ast) => ast,
-            Err(err) => {
-                println!("\x1b[31merror:\x1b[0m {} ({:?})", err, idl_path);
-                return Err(());
-            }
-        };
-
-        let name = path
-            .file_name()
-            .expect("a directory name was expected but none was found")
-            .to_str()
-            .expect("directory name was not valid unicode")
-            .to_string();
-
-        let module = Module {
-            name: name,
-            raw_ast: ast,
-            submodules: Vec::new(),
-            items: Vec::new(),
-        };
-
-        modules.push(module);
+        let name = get_dir_name(path);
+        let ast = load_ast(&path.join("idl.rs"))?;
+        modules.push((name, ast));
     }
 
     Ok(modules)
+}
+
+fn lower_idl_modules<'ir>(modules: &'ir Vec<(String, File)>) -> Vec<Module<'ir>> {
+    let mut ir_mods = Vec::new();
+    ir_mods.reserve_exact(modules.len());
+    for (name, ast) in modules {
+        ir_mods.push(produce_module(name, ast))
+    }
+
+    ir_mods
 }
 
 /*
@@ -151,10 +264,12 @@ fn main() {
 
     let glue_crate = Path::new(&args[1]);
     let domain_paths: Vec<&Path> = args[2..].iter().map(|s| Path::new(s)).collect();
-    let idl_mods = match parse_idl_modules(&domain_paths) {
+    let idl_mods = match load_idl_modules(&domain_paths) {
         Ok(ret) => ret,
         Err(_) => return,
     };
+
+    let mods = lower_idl_modules(&idl_mods);
 
     // The pseudo-identifier "crate" in every module is specially interpreted as referring to this root module
     // Similarly, references to the crate::sys crate (implemented via a sentinel module ID?) will not refer to
@@ -164,14 +279,9 @@ fn main() {
 
     // More accurately, we use "fake" types
 
-    let lib_mod = Module {
+    let _lib_mod = Module {
         name: "lib".to_string(),
-        raw_ast: syn::File {
-            attrs: Vec::new(),
-            shebang: None,
-            items: Vec::new(),
-        },
-        submodules: idl_mods,
+        submodules: mods,
         items: Vec::new(),
     };
 
@@ -182,5 +292,5 @@ fn main() {
     // to integrate everything else
     // This segment should probably live in mod_map
 
-    clean_stale_glue_modules(glue_crate);
+    clean_stale_glue_modules(glue_crate)
 }
