@@ -20,6 +20,8 @@ pub struct DomainTrait<'ast> {
 pub struct DomainRpc<'ast> {
     pub raw: &'ast TraitItemMethod,
     pub raw_types: Vec<&'ast Type>, // replace with IDL defs
+    // NOTE: Tian, this'll probably move around a bit, but it's always a child node of DomainRpc
+    pub lowered_types: Vec<LoweredType<'ast>>,
 }
 
 pub struct StructDef<'ast> {
@@ -43,7 +45,32 @@ trait IRVisit<'ir, 'ast> {
     fn visit_struct_def(&mut self, node: &'ir StructDef<'ast>);
 }
 
-// NOTE: Tian: you can always quote! these
+// Type structures
+
+enum TypeStructure<'ast, 'ir> {
+    Tuple(Box<Tuple<'ast, 'ir>>),
+    Array(Box<Array<'ast, 'ir>>),
+    NamedType(NamedType<'ast, 'ir>),
+}
+
+struct Tuple<'ast, 'ir> {
+    pub raw: &'ast TypeTuple,
+    pub contents: Vec<TypeStructure<'ast, 'ir>>,
+}
+
+struct Array<'ast, 'ir> {
+    pub raw: &'ast TypeArray,
+    pub contents: Vec<TypeStructure<'ast, 'ir>>,
+}
+
+// TODO: resolving these is the fun part
+enum NamedType<'ast, 'ir> {
+    Raw(&'ast syn::Path),
+    Def(&'ir ModItem<'ast>),
+    Prim(()), // something goes here, probably a type ID
+}
+
+// NOTE: Tian: you can always quote!{} these in generation
 
 pub enum LoweredType<'ast> {
     RRefLike(Box<RRefLike<'ast>>),

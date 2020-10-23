@@ -121,6 +121,7 @@ impl<'ast> Visit<'ast> for DomainRpcCollection<'ast> {
         self.rpcs.push(DomainRpc {
             raw: node,
             raw_types: collect_domain_rpc_types(node),
+            lowered_types: Vec::new()
         })
     }
 }
