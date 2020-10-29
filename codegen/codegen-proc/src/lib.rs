@@ -51,6 +51,13 @@ pub fn my_macro(input: TokenStream) -> TokenStream {
     TokenStream::from(expanded)
 }
 
+#[proc_macro_attribute]
+pub fn generate_trampoline(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    unimplemented!()
+}
+
+
+
 #[cfg(test)]
 mod tests {
     #[test]
