@@ -1,38 +1,36 @@
-// #[macro_export]
-// macro_rules! generate_trampoline1 {
-//     ($id: ident, $param_list: tt) => {
-//         fn $id($id $crate::expand_param_list!($param_list)){}
-//     };
-// }
+pub use paste::paste;
 
 #[macro_export]
-macro_rules! generate_trampoline2 {
-    (fn $func:ident($($arg:ident : $ty:ty),*)) => {
-        fn $func(self, $($arg: $ty,)*) 
-        {
-            unimplemented!()
+macro_rules! generate_trampoline {
+    ($dom:ident : $dom_type:ty, fn $func:ident($($arg:ident : $ty:ty),*) -> $ret:ty) => {
+        $crate::paste! {
+            #[no_mangle]
+            extern fn $func($dom: $dom_type, $($arg: $ty,)*) -> $ret {
+                $dom.$func($($arg), *)
+            }
+
+            #[no_mangle]
+            extern fn [<$func _err>]($dom: $dom_type, $($arg: $ty,)*) -> $ret {
+                #[cfg(feature = "proxy-log-error")]
+                ::console::println!("$ aborted");
+
+                Err(unsafe{::usr::rpc::RpcError::panic()})
+            }
+
+            #[no_mangle]
+            extern "C" fn [<$func _addr>]() -> u64 {
+                [<$func _err>] as u64
+            }
+
+            extern {
+                fn [<$func _tramp>]($dom: $dom_type, $($arg: $ty,)*) -> $ret;
+            }
+
+            trampoline!($func);
         }
     };
 }
 
-#[macro_export]
-macro_rules! generate_trampoline1 {
-    ($id:ident,$($param:ident,$type:ty),*) => {
-        
-        // fn $id($($param, $type),*){}
-        // let arr = [$($param),+];
-    };
-}
-
-#[macro_export]
-macro_rules! expand_param_list {
-    ($param:expr, $type:ty) => {
-        $param
-    };
-    // ($($param:expr, $type:ty), +) => {
-    //     $param: $type, +
-    // };
-}
 
 #[cfg(test)]
 mod tests {
