@@ -12,7 +12,7 @@ macro_rules! generate_trampoline {
             #[no_mangle]
             extern fn [<$func _err>]($dom: $dom_type, $($arg: $ty,)*) -> $ret {
                 #[cfg(feature = "proxy-log-error")]
-                ::console::println!("proxy: {} aborted", stringify!($func), ));
+                ::console::println!("proxy: {} aborted", stringify!($func));
 
                 Err(unsafe{::usr::rpc::RpcError::panic()})
             }
