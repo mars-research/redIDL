@@ -1,4 +1,5 @@
 mod ir;
+mod sanity;
 
 use ir::*;
 use std::env::args;
@@ -228,6 +229,11 @@ fn load_idl_modules<'ast>(domains: &Vec<&Path>) -> std::result::Result<Vec<(Stri
     for path in domains {
         let name = get_dir_name(path);
         let ast = load_ast(&path.join("idl.rs"))?;
+        if !sanity::sanity_check_module(&ast) {
+            println!("Module {} failed sanity check", name);
+            return Err(());
+        }
+
         modules.push((name, ast));
     }
 
@@ -243,6 +249,10 @@ fn lower_idl_modules<'ir>(modules: &'ir Vec<(String, File)>) -> Vec<Module<'ir>>
 
     ir_mods
 }
+
+// Keep a table of "assigned type IDs"
+// Every RRef, we compute the type ID (with path resolution accounted for) of its argument and insert into said table
+// If the entry was newly inserted, we implement TypeIdentifiable for it using its type ID
 
 /*
     NOTE: Deferring support for relative type paths, use statements, and generalized module collection
