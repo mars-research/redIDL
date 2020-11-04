@@ -1,3 +1,4 @@
+#![no_std]
 pub use paste::paste;
 
 #[macro_export]
