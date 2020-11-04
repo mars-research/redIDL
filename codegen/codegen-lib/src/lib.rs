@@ -1,9 +1,25 @@
 #![no_std]
 pub use paste::paste;
 
+
+
+/// Macro for generating a trapoline
+/// 
+/// Sample usage:
+/// There's a domain `DomC` with interface function `one_arg` with IDL defined as the following:
+/// ```
+/// pub trait DomC {
+/// fn one_arg(&self, x: usize) -> RpcResult<usize>;
+/// }
+/// ```
+/// 
+/// To generate the trampoline for it, do the following.
+/// ```
+/// generate_trampoline!(s: &Box<dyn usr::dom_c::DomC>, one_arg(x: usize) -> RpcResult<usize>);
+/// ```
 #[macro_export]
 macro_rules! generate_trampoline {
-    ($dom:ident : $dom_type:ty, fn $func:ident($($arg:ident : $ty:ty),*) -> $ret:ty) => {
+    ($dom:ident : $dom_type:ty, $func:ident($($arg:ident : $ty:ty),*) -> $ret:ty) => {
         $crate::paste! {
             #[no_mangle]
             extern fn $func($dom: $dom_type, $($arg: $ty,)*) -> $ret {
