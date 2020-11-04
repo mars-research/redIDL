@@ -1,4 +1,4 @@
-use syn::*;
+use syn::{*, visit::*};
 
 // NOTE: A lot of information is simply left in the original AST
 // NOTE:
@@ -93,4 +93,116 @@ pub struct Bitwise<'ast> {
 
 pub struct DomainTraitRef<'ast> {
     pub raw: &'ast Type,
+}
+
+// So how is the IR AST actually built?
+// We run into borrow-checking issues
+// Could probably just box this stuff
+// But a vector of boxes is just nasty
+// We need absolute references
+// or a reference that is known to live long enough
+// Let's box it by default
+
+struct DomainRpcTypeCollection<'ast> {
+    types: Vec<&'ast syn::Type>,
+}
+
+struct DomainRpcCollection<'ast> {
+    rpcs: Vec<DomainRpc<'ast>>,
+}
+
+struct ModItemCollection<'ast> {
+    items: Vec<ModItem<'ast>>,
+}
+
+struct StructDefCollection<'ast> {
+    generics: Vec<String>,
+    types: Vec<&'ast Type>,
+}
+
+// We have no need to iterate deeper in any of these
+
+impl<'ast> Visit<'ast> for DomainRpcTypeCollection<'ast> {
+    fn visit_type(&mut self, node: &'ast Type) {
+        self.types.push(node)
+    }
+}
+
+impl<'ast> Visit<'ast> for DomainRpcCollection<'ast> {
+    fn visit_trait_item_method(&mut self, node: &'ast TraitItemMethod) {
+        self.rpcs.push(DomainRpc {
+            raw: node,
+            raw_types: collect_domain_rpc_types(node),
+            lowered_types: Vec::new()
+        })
+    }
+}
+
+impl<'ast> Visit<'ast> for StructDefCollection<'ast> {
+    fn visit_type_param(&mut self, node: &'ast TypeParam) {
+        self.generics.push(node.ident.to_string())
+    }
+
+    fn visit_type(&mut self, node: &'ast Type) {
+        self.types.push(node)
+    }
+}
+
+impl<'ast> Visit<'ast> for ModItemCollection<'ast> {
+    fn visit_item_trait(&mut self, node: &'ast ItemTrait) {
+        let ir_node = DomainTrait {
+            raw: node,
+            name: node.ident.to_string(),
+            methods: collect_domain_rpcs(node),
+        };
+
+        self.items.push(ModItem::DomainTrait(Box::new(ir_node)))
+    }
+
+    fn visit_item_struct(&mut self, node: &'ast ItemStruct) {
+        let (gens, types) = collect_struct_def(node);
+        let ir_node = StructDef {
+            name: node.ident.to_string(),
+            raw: node,
+            generic_names: gens,
+            raw_types: types,
+        };
+
+        self.items.push(ModItem::StructDef(Box::new(ir_node)))
+    }
+}
+
+fn collect_domain_rpc_types<'ast>(node: &'ast TraitItemMethod) -> Vec<&'ast Type> {
+    let mut visit = DomainRpcTypeCollection { types: Vec::new() };
+    visit.visit_trait_item_method(node);
+    visit.types
+}
+
+fn collect_domain_rpcs<'ast>(node: &'ast ItemTrait) -> Vec<DomainRpc<'ast>> {
+    let mut visit = DomainRpcCollection { rpcs: Vec::new() };
+    visit.visit_item_trait(node);
+    visit.rpcs
+}
+
+fn collect_mod_items<'ast>(node: &'ast File) -> Vec<ModItem<'ast>> {
+    let mut visit = ModItemCollection { items: Vec::new() };
+    visit.visit_file(node);
+    visit.items
+}
+
+fn collect_struct_def<'ast>(node: &'ast ItemStruct) -> (Vec<String>, Vec<&'ast Type>) {
+    let mut visit = StructDefCollection {
+        generics: Vec::new(),
+        types: Vec::new(),
+    };
+    visit.visit_item_struct(node);
+    (visit.generics, visit.types)
+}
+
+pub fn produce_module<'ast>(name: &str, ast: &'ast File) -> Module<'ast> {
+    Module {
+        name: name.to_string(),
+        submodules: Vec::new(),
+        items: collect_mod_items(ast),
+    }
 }
