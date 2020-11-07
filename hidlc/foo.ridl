@@ -1,0 +1,1 @@
+struct Foo { } trait Bar { fn do_foo (& self , a : & Foo) -> u32 ; }
