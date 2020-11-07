@@ -1,54 +1,65 @@
-#![feature(log_syntax)]
+#![feature(log_syntax, proc_macro_def_site)]
 
-extern crate proc_macro;
-
-use proc_macro::TokenStream;
+use proc_macro::{TokenStream};
+use proc_macro2::Span;
 use quote::{quote, quote_spanned};
-use syn::{Error, parse_macro_input, DeriveInput, Data};
+use syn::{Error, parse_macro_input};
 use syn::spanned::Spanned;
 
-#[proc_macro_derive(MyMacro)]
-pub fn my_macro(input: TokenStream) -> TokenStream {
+#[proc_macro_attribute]
+pub fn generate_proxy(attr: TokenStream, item: TokenStream) -> TokenStream {
     // Parse the input tokens into a syntax tree
-    let input = parse_macro_input!(input as DeriveInput);
+    let input: syn::ItemTrait = syn::parse(item).expect("interface definition must be a valid trait definition");
 
+    let trait_path = &input.ident;
+    let beautified_trait_path = input.ident.to_string().replace("::", "_");
+    let beautified_trait_path_lower_case = beautified_trait_path.to_lowercase();
 
-    let recurse = match &input.data {
-        Data::Struct(st) => {
-            st.fields.iter().map(|field| -> Option<syn::Type> {
-                match &field.ty {
-                    syn::Type::BareFn(f) => {
-                        match &f.output {
-                            syn::ReturnType::Default => None,
-                            syn::ReturnType::Type(_, ty) => {
-                                Some((**ty).clone())
-                            },
-                        }
-                    },
-                    _ => panic!("only function is supported"),
-                }
-            })
-            .filter(|t| t.is_some()) 
-            .enumerate()
-            .map(|(i, ty)| {
-                let copy_ident = syn::Ident::new(&format!("_AssertCopy_{}", i), proc_macro2::Span::call_site());
-                let sync_ident = syn::Ident::new(&format!("_AssertSync_{}", i), proc_macro2::Span::call_site());
-                let ty = ty.unwrap();
-                quote_spanned! {ty.span()=>
-                    struct #copy_ident where #ty: std::marker::Copy;
-                    struct #sync_ident where #ty: std::marker::Sync;
-                }
-            })
+    let proxy_ident = syn::Ident::new(&format!("{}Proxy", trait_path), Span::call_site());
+
+    let proxy = quote! {
+        struct #proxy_ident {
+            domain: ::alloc::boxed::Box<dyn #trait_path>,
+            domain_id: u64,
         }
-        _ => panic!("only struct is supported"),
+        
+        unsafe impl Sync for #proxy_ident {}
+        unsafe impl Send for #proxy_ident {}
+        
+        impl #proxy_ident {
+            fn new(domain_id: u64, domain: ::alloc::boxed::Box<dyn #trait_path>) -> Self {
+                Self {
+                    domain,
+                    domain_id,
+                }
+            }
+        }
     };
 
-    let expanded = quote! {
-        #(#recurse)*
+    let trampolines = input.items.iter().map(
+        |item| {
+            match item {
+                syn::TraitItem::Method(method) => {
+                    
+                    let domain_ident = syn::Ident::new(&format!("generated_proxy_domain_{}", beautified_trait_path_lower_case), Span::call_site());
+                    quote!(
+                        ::codegen_lib::generate_trampoline!(#domain_ident: &alloc::boxed::Box<dyn #trait_path>, no_arg() -> RpcResult<()>);
+                    )
+                },
+                // Marked as `unimplemented` instead of `panic` because we might be able to allow other stuff here as well.
+                _ => unimplemented!("Only methods are allowed in an interface trait definition."),
+            }
+        }
+    );
+
+    let output = quote! {
+        #proxy
+
+        #(#trampolines)*
     };
 
     // Hand the output tokens back to the compiler
-    TokenStream::from(expanded)
+    TokenStream::from(output)
 }
 
 #[proc_macro_attribute]
