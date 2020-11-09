@@ -52,10 +52,13 @@ pub fn generate_proxy(attr: TokenStream, item: TokenStream) -> TokenStream {
         })
         .collect();
 
+    let proxy_impl = generate_proxy_impl(trait_path, &proxy_ident, &trait_methods[..]);
     let trampolines = generate_trampolines(trait_path, &beautified_trait_path_lower_case, &trait_methods[..]);
 
     let output = quote! {
         #proxy
+
+        #proxy_impl
 
         #trampolines
     };
@@ -83,39 +86,31 @@ fn generate_trampolines(trait_path: &syn::Ident, beautified_trait_path_lower_cas
 
 /// Generate proxy implementation, e.g., `impl DomC for DomCProxy`.
 fn generate_proxy_impl(trait_path: &syn::Ident, proxy_ident: &syn::Ident, methods: &[&syn::TraitItemMethod]) -> proc_macro2::TokenStream {
-
+    let proxy_impls = methods.iter().map(generate_proxy_impl_one);
 
     quote! {
         impl #trait_path for #proxy_ident {
-            fn no_arg(&self) -> RpcResult<()> {
-                // move thread to next domain
-                let caller_domain = unsafe { sys_update_current_domain_id(self.domain_id) };
-        
-                #[cfg(not(feature = "tramp"))]
-                let r = self.domain.no_arg();
-                #[cfg(feature = "tramp")]
-                let r = unsafe { no_arg_tramp(&self.domain) };
-        
-                // move thread back
-                unsafe { sys_update_current_domain_id(caller_domain) };
-        
-                r
-            }
+            #(#proxy_impls)*
         }
     }
 }
 
-/// Generate the proxy implementation for one signal method
-fn generate_proxy_impl_one(method: &syn::TraitItemMethod) -> proc_macro2::TokenStream {
+/// Generate the proxy implementation for one single method
+fn generate_proxy_impl_one(method: &&syn::TraitItemMethod) -> proc_macro2::TokenStream {
+    let sig = &method.sig;
+    let ident = &sig.ident;
+    let trampoline_ident = quote::format_ident!("{}_tramp", ident);
+    let args = &sig.inputs;
+    let return_ty = &sig.output;
     quote! {
-        fn no_arg(&self) -> RpcResult<()> {
+        fn #ident(&self, #args) #return_ty {
             // move thread to next domain
             let caller_domain = unsafe { sys_update_current_domain_id(self.domain_id) };
     
-            #[cfg(not(feature = "tramp"))]
-            let r = self.domain.no_arg();
-            #[cfg(feature = "tramp")]
-            let r = unsafe { no_arg_tramp(&self.domain) };
+            #[cfg(not(feature = "trampoline"))]
+            let r = self.domain.#ident(#args);
+            #[cfg(feature = "trampoline")]
+            let r = unsafe { #trampoline_ident(&self.domain, #args) };
     
             // move thread back
             unsafe { sys_update_current_domain_id(caller_domain) };
