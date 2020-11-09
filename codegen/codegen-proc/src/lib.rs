@@ -52,7 +52,20 @@ pub fn generate_proxy(attr: TokenStream, item: TokenStream) -> TokenStream {
         })
         .collect();
 
-    let trampolines = trait_methods.iter()
+    let trampolines = generate_trampolines(trait_path, &beautified_trait_path_lower_case, &trait_methods[..]);
+
+    let output = quote! {
+        #proxy
+
+        #trampolines
+    };
+    
+    // Hand the output tokens back to the compiler
+    TokenStream::from(output)
+}
+
+fn generate_trampolines(trait_path: &syn::Ident, beautified_trait_path_lower_case: &str,  methods: &[&syn::TraitItemMethod]) -> proc_macro2::TokenStream {
+    let trampolines = methods.iter()
         .map(|method| {
             let sig = &method.sig;
             let ident = &sig.ident;
@@ -64,14 +77,7 @@ pub fn generate_proxy(attr: TokenStream, item: TokenStream) -> TokenStream {
 
         });
 
-    let output = quote! {
-        #proxy
-
-        #(#trampolines)*
-    };
-    
-    // Hand the output tokens back to the compiler
-    TokenStream::from(output)
+    quote! { #(#trampolines)* }
 }
 
 

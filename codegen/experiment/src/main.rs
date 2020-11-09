@@ -1,3 +1,5 @@
+#![no_std]
+
 #[macro_use]
 use codegen_lib::generate_trampoline;
 use codegen_proc::generate_proxy;
@@ -29,5 +31,5 @@ pub trait DomC {
 
 
 fn main() {
-    println!("Hello, world!");
+    
 }
