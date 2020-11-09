@@ -1,3 +1,4 @@
+#[interface]
 pub trait BDev {
     fn read(&self, block: u32, data: RRef<[u8; BSIZE]>) -> RpcResult<RRef<[u8; BSIZE]>>;
     fn write(&self, block: u32, data: &RRef<[u8; BSIZE]>) -> RpcResult<()>;

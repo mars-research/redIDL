@@ -36,37 +36,43 @@ pub fn generate_proxy(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     };
 
-    let trampolines = input.items.iter().map(
-        |item| {
+    let trait_methods: Vec<&syn::TraitItemMethod> = input.items.iter()
+        .filter(|item| {
             match item {
-                syn::TraitItem::Method(method) => {
-                    
-                    let domain_ident = syn::Ident::new(&format!("generated_proxy_domain_{}", beautified_trait_path_lower_case), Span::call_site());
-                    quote!(
-                        ::codegen_lib::generate_trampoline!(#domain_ident: &alloc::boxed::Box<dyn #trait_path>, no_arg() -> RpcResult<()>);
-                    )
-                },
-                // Marked as `unimplemented` instead of `panic` because we might be able to allow other stuff here as well.
-                _ => unimplemented!("Only methods are allowed in an interface trait definition."),
+                syn::TraitItem::Method(_) => true,
+                _ => false,
             }
-        }
-    );
+        })
+        .map(|item| {
+            match item {
+                syn::TraitItem::Method(method) => method,
+                // Marked as `unimplemented` instead of `panic` because we might be able to allow other stuff here as well.
+                _ => unreachable!(),
+            }
+        })
+        .collect();
+
+    let trampolines = trait_methods.iter()
+        .map(|method| {
+            let sig = &method.sig;
+            let ident = &sig.ident;
+            let domain_ident = syn::Ident::new(&format!("generated_proxy_domain_{}", beautified_trait_path_lower_case), Span::call_site());
+            let args = &sig.inputs;
+            quote!(
+                ::codegen_lib::generate_trampoline!(#domain_ident: &alloc::boxed::Box<dyn #trait_path>, #ident(#args) -> RpcResult<()>);
+            )
+
+        });
 
     let output = quote! {
         #proxy
 
         #(#trampolines)*
     };
-
+    
     // Hand the output tokens back to the compiler
     TokenStream::from(output)
 }
-
-#[proc_macro_attribute]
-pub fn generate_trampoline(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    unimplemented!()
-}
-
 
 
 #[cfg(test)]
