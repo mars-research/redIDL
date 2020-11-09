@@ -15,7 +15,7 @@ pub fn generate_proxy(attr: TokenStream, item: TokenStream) -> TokenStream {
     let beautified_trait_path = input.ident.to_string().replace("::", "_");
     let beautified_trait_path_lower_case = beautified_trait_path.to_lowercase();
 
-    let proxy_ident = syn::Ident::new(&format!("{}Proxy", trait_path), Span::call_site());
+    let proxy_ident = quote::format_ident!("{}Proxy", trait_path);
 
     let proxy = quote! {
         struct #proxy_ident {
@@ -64,6 +64,7 @@ pub fn generate_proxy(attr: TokenStream, item: TokenStream) -> TokenStream {
     TokenStream::from(output)
 }
 
+/// Generate trampolines for `methods`.
 fn generate_trampolines(trait_path: &syn::Ident, beautified_trait_path_lower_case: &str,  methods: &[&syn::TraitItemMethod]) -> proc_macro2::TokenStream {
     let trampolines = methods.iter()
         .map(|method| {
@@ -71,13 +72,57 @@ fn generate_trampolines(trait_path: &syn::Ident, beautified_trait_path_lower_cas
             let ident = &sig.ident;
             let domain_ident = syn::Ident::new(&format!("generated_proxy_domain_{}", beautified_trait_path_lower_case), Span::call_site());
             let args = &sig.inputs;
+            let return_ty = &sig.output;
             quote!(
-                ::codegen_lib::generate_trampoline!(#domain_ident: &alloc::boxed::Box<dyn #trait_path>, #ident(#args) -> RpcResult<()>);
+                ::codegen_lib::generate_trampoline!(#domain_ident: &alloc::boxed::Box<dyn #trait_path>, #ident(#args) #return_ty);
             )
-
         });
 
     quote! { #(#trampolines)* }
+}
+
+/// Generate proxy implementation, e.g., `impl DomC for DomCProxy`.
+fn generate_proxy_impl(trait_path: &syn::Ident, proxy_ident: &syn::Ident, methods: &[&syn::TraitItemMethod]) -> proc_macro2::TokenStream {
+
+
+    quote! {
+        impl #trait_path for #proxy_ident {
+            fn no_arg(&self) -> RpcResult<()> {
+                // move thread to next domain
+                let caller_domain = unsafe { sys_update_current_domain_id(self.domain_id) };
+        
+                #[cfg(not(feature = "tramp"))]
+                let r = self.domain.no_arg();
+                #[cfg(feature = "tramp")]
+                let r = unsafe { no_arg_tramp(&self.domain) };
+        
+                // move thread back
+                unsafe { sys_update_current_domain_id(caller_domain) };
+        
+                r
+            }
+        }
+    }
+}
+
+/// Generate the proxy implementation for one signal method
+fn generate_proxy_impl_one(method: &syn::TraitItemMethod) -> proc_macro2::TokenStream {
+    quote! {
+        fn no_arg(&self) -> RpcResult<()> {
+            // move thread to next domain
+            let caller_domain = unsafe { sys_update_current_domain_id(self.domain_id) };
+    
+            #[cfg(not(feature = "tramp"))]
+            let r = self.domain.no_arg();
+            #[cfg(feature = "tramp")]
+            let r = unsafe { no_arg_tramp(&self.domain) };
+    
+            // move thread back
+            unsafe { sys_update_current_domain_id(caller_domain) };
+    
+            r
+        }
+    }
 }
 
 
