@@ -19,7 +19,7 @@ pub use paste::paste;
 /// ```
 #[macro_export]
 macro_rules! generate_trampoline {
-    ($dom:ident : $dom_type:ty, $func:ident($($arg:ident : $ty:ty),*) -> $ret:ty) => {
+    ($dom:ident : $dom_type:ty, $func:ident(&self, $($arg:ident : $ty:ty),*) -> $ret:ty) => {
         $crate::paste! {
             #[no_mangle]
             extern fn $func($dom: $dom_type, $($arg: $ty,)*) -> $ret {

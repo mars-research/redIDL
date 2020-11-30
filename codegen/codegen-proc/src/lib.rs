@@ -1,13 +1,17 @@
 #![feature(log_syntax, proc_macro_def_site)]
 
-use proc_macro::{TokenStream};
+use proc_macro::TokenStream;
 use proc_macro2::Span;
-use quote::{quote, quote_spanned};
-use syn::{Error, parse_macro_input};
-use syn::spanned::Spanned;
+use quote::{quote, format_ident};
 
+// #[proc_macro_attribute]
+// pub fn interface(attr: TokenStream, item: TokenStream) -> TokenStream  {
+//     generate_proxy(attr, item)
+// }
+
+/// Generate the proxy for an interface definition.
 #[proc_macro_attribute]
-pub fn generate_proxy(attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn generate_proxy(_attr: TokenStream, item: TokenStream) -> TokenStream {
     // Parse the input tokens into a syntax tree
     let input: syn::ItemTrait = syn::parse(item).expect("interface definition must be a valid trait definition");
 
@@ -15,7 +19,7 @@ pub fn generate_proxy(attr: TokenStream, item: TokenStream) -> TokenStream {
     let beautified_trait_path = input.ident.to_string().replace("::", "_");
     let beautified_trait_path_lower_case = beautified_trait_path.to_lowercase();
 
-    let proxy_ident = quote::format_ident!("{}Proxy", trait_path);
+    let proxy_ident = format_ident!("{}Proxy", trait_path);
 
     let proxy = quote! {
         struct #proxy_ident {
@@ -56,6 +60,10 @@ pub fn generate_proxy(attr: TokenStream, item: TokenStream) -> TokenStream {
     let trampolines = generate_trampolines(trait_path, &beautified_trait_path_lower_case, &trait_methods[..]);
 
     let output = quote! {
+        // An extra copy of interface definition is copied over to the proxy crate so that 
+        // we don't have to resolve the dependencies
+        #input
+
         #proxy
 
         #proxy_impl
@@ -99,11 +107,11 @@ fn generate_proxy_impl(trait_path: &syn::Ident, proxy_ident: &syn::Ident, method
 fn generate_proxy_impl_one(method: &&syn::TraitItemMethod) -> proc_macro2::TokenStream {
     let sig = &method.sig;
     let ident = &sig.ident;
-    let trampoline_ident = quote::format_ident!("{}_tramp", ident);
+    let trampoline_ident = format_ident!("{}_tramp", ident);
     let args = &sig.inputs;
     let return_ty = &sig.output;
     quote! {
-        fn #ident(&self, #args) #return_ty {
+        fn #ident(#args) #return_ty {
             // move thread to next domain
             let caller_domain = unsafe { sys_update_current_domain_id(self.domain_id) };
     

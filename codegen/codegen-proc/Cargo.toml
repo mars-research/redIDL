@@ -10,7 +10,10 @@ edition = "2018"
 [lib]
 proc-macro = true
 
+[build]
+rustflags = ["--cfg", "procmacro2_semver_exempt"]
+
 [dependencies]
 syn = { version = "1.0.48", features = ["full"]}
 quote = "1.0.7"
-proc-macro2 = { version = "1.0.24", features = ["span-locations"] }
+proc-macro2 = { version = "1.0.24", features = ["nightly"] }
