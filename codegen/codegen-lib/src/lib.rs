@@ -31,7 +31,7 @@ macro_rules! generate_trampoline {
                 #[cfg(feature = "proxy-log-error")]
                 ::console::println!("proxy: {} aborted", stringify!($func));
 
-                Err(unsafe{::usr::rpc::RpcError::panic()})
+                Err(unsafe{crate::rpc::RpcError::panic()})
             }
 
             #[no_mangle]

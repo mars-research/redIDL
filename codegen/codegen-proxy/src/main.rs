@@ -3,15 +3,28 @@ use std::error::Error;
 use std::fs::File;
 use std::io::Read;
 
+use clap::{Arg, App};
 use syn::{Item, Stmt, Meta, NestedMeta, parse_quote};
 use quote::quote;
 
 fn main() {
-    let filename: String = env::args().skip(1).next().unwrap();
-    println!("{:?}", filename);
-    let file = run(&filename).unwrap();
+    let matches = App::new("Proxy Generator")
+                            .version(env!("CARGO_PKG_VERSION"))
+                            .about("Generate proxy")
+                            .arg(Arg::with_name("INPUT")
+                                .help("Sets the input file to use")
+                                .required(true)
+                                .index(1))
+                            .arg(Arg::with_name("OUTPUT")
+                                .help("Sets the output file to use")
+                                .required(true)
+                                .index(2))
+                            .get_matches();
+
+
+    let file = run(&matches.value_of("INPUT").unwrap()).unwrap();
     let output = quote!(#file).to_string();
-    std::fs::write("out.rs", output).unwrap();
+    std::fs::write(&matches.value_of("OUTPUT").unwrap(), output).unwrap();
 }
 
 
@@ -61,7 +74,7 @@ fn run(filename: &str) -> Result<syn::File, Box<dyn Error>> {
     });
 
 
-    // Recursively inject import statements in each 
+    // Recursively inject import statements in each module
     for item in ast.items.iter_mut() {
         inject_import_recursive(item)?
     }
@@ -70,6 +83,7 @@ fn run(filename: &str) -> Result<syn::File, Box<dyn Error>> {
     Ok(ast)
 }
 
+// Recursively inject import statements in each module
 fn inject_import_recursive(item: &mut Item) -> Result<(), Box<dyn Error>> {
     match item {
         Item::Mod(md) => {
