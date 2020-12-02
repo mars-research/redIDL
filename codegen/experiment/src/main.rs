@@ -12,11 +12,13 @@ use codegen_proc::generate_proxy as interface;
 // generate_trampoline!(s: usr::dom_c::DomC, fn yeet(asd: u8) -> u8);
 
 #[interface]
-#[interface]
 pub trait DomC {
-    fn no_arg(&self) -> RpcResult<()>;
-    fn one_arg(&self, x: usize) -> RpcResult<usize>;
-    fn one_rref(&self, x: RRef<usize>) -> RpcResult<RRef<usize>>;
+    // fn no_arg(&self) -> u8;
+    // fn one_rref(&mut self, x: u8) -> u8;
+    // fn a1(&mut self, x: u8);
+    // fn a2(&mut self,);
+    // fn read(&self, bus: u8, dev: u8, func: u8, offset: u8) -> u32;
+    fn write(&self, bus: u8, dev: u8, func: u8, offset: u8, value: u32);
 }
 
 

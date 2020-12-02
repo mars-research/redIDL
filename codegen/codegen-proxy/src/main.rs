@@ -73,6 +73,11 @@ fn run(filename: &str) -> Result<syn::File, Box<dyn Error>> {
         true
     });
 
+    // Inject #![feature(global_asm, type_ascription)]
+    ast.attrs.push(
+        parse_quote!(#![feature(global_asm, type_ascription)])
+    );
+
 
     // Recursively inject import statements in each module
     for item in ast.items.iter_mut() {

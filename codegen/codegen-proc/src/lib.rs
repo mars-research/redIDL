@@ -3,6 +3,8 @@
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::{quote, format_ident};
+use syn::{ItemTrait, TraitItemMethod, Ident, FnArg, Token, TraitItem};
+use syn::punctuated::Punctuated;
 
 // #[proc_macro_attribute]
 // pub fn interface(attr: TokenStream, item: TokenStream) -> TokenStream  {
@@ -13,7 +15,8 @@ use quote::{quote, format_ident};
 #[proc_macro_attribute]
 pub fn generate_proxy(_attr: TokenStream, item: TokenStream) -> TokenStream {
     // Parse the input tokens into a syntax tree
-    let input: syn::ItemTrait = syn::parse(item).expect("interface definition must be a valid trait definition");
+    let input: ItemTrait = syn::parse(item).expect("interface definition must be a valid trait definition");
+    let input_copy = input.clone();
 
     let trait_path = &input.ident;
     let beautified_trait_path = input.ident.to_string().replace("::", "_");
@@ -40,29 +43,41 @@ pub fn generate_proxy(_attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     };
 
-    let trait_methods: Vec<&syn::TraitItemMethod> = input.items.iter()
-        .filter(|item| {
+    
+    // Remove non-method members
+    let trait_methods: Vec<TraitItemMethod> = input.items
+        .into_iter()
+        .filter_map(|item| {
             match item {
-                syn::TraitItem::Method(_) => true,
-                _ => false,
-            }
-        })
-        .map(|item| {
-            match item {
-                syn::TraitItem::Method(method) => method,
-                // Marked as `unimplemented` instead of `panic` because we might be able to allow other stuff here as well.
-                _ => unreachable!(),
+                TraitItem::Method(method) => Some(method),
+                _ => None,
             }
         })
         .collect();
 
-    let proxy_impl = generate_proxy_impl(trait_path, &proxy_ident, &trait_methods[..]);
-    let trampolines = generate_trampolines(trait_path, &beautified_trait_path_lower_case, &trait_methods[..]);
+    // Filter out `&self` and `&mut self`
+    let cleaned_trait_methods = {
+        let mut cleaned_trait_methods = trait_methods.clone();
+        for method in &mut cleaned_trait_methods {
+            let mut args = Punctuated::<FnArg, Token![,]>::new();
+            for arg in &method.sig.inputs {
+                match arg {
+                    FnArg::Receiver(_) => {},
+                    FnArg::Typed(typed) => args.push(FnArg::Typed(typed.clone())),
+                }
+            }
+            method.sig.inputs = args;
+        }
+        cleaned_trait_methods
+    };
 
+    let proxy_impl = generate_proxy_impl(trait_path, &proxy_ident, &trait_methods[..]);
+    let trampolines = generate_trampolines(trait_path, &beautified_trait_path_lower_case, &cleaned_trait_methods[..]);
+    
     let output = quote! {
         // An extra copy of interface definition is copied over to the proxy crate so that 
         // we don't have to resolve the dependencies
-        #input
+        #input_copy
 
         #proxy
 
@@ -76,7 +91,7 @@ pub fn generate_proxy(_attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 /// Generate trampolines for `methods`.
-fn generate_trampolines(trait_path: &syn::Ident, beautified_trait_path_lower_case: &str,  methods: &[&syn::TraitItemMethod]) -> proc_macro2::TokenStream {
+fn generate_trampolines(trait_path: &Ident, beautified_trait_path_lower_case: &str,  methods: &[TraitItemMethod]) -> proc_macro2::TokenStream {
     let trampolines = methods.iter()
         .map(|method| {
             let sig = &method.sig;
@@ -93,7 +108,7 @@ fn generate_trampolines(trait_path: &syn::Ident, beautified_trait_path_lower_cas
 }
 
 /// Generate proxy implementation, e.g., `impl DomC for DomCProxy`.
-fn generate_proxy_impl(trait_path: &syn::Ident, proxy_ident: &syn::Ident, methods: &[&syn::TraitItemMethod]) -> proc_macro2::TokenStream {
+fn generate_proxy_impl(trait_path: &syn::Ident, proxy_ident: &syn::Ident, methods: &[TraitItemMethod]) -> proc_macro2::TokenStream {
     let proxy_impls = methods.iter().map(generate_proxy_impl_one);
 
     quote! {
@@ -104,7 +119,7 @@ fn generate_proxy_impl(trait_path: &syn::Ident, proxy_ident: &syn::Ident, method
 }
 
 /// Generate the proxy implementation for one single method
-fn generate_proxy_impl_one(method: &&syn::TraitItemMethod) -> proc_macro2::TokenStream {
+fn generate_proxy_impl_one(method: &TraitItemMethod) -> proc_macro2::TokenStream {
     let sig = &method.sig;
     let ident = &sig.ident;
     let trampoline_ident = format_ident!("{}_tramp", ident);

@@ -19,15 +19,15 @@ pub use paste::paste;
 /// ```
 #[macro_export]
 macro_rules! generate_trampoline {
-    ($dom:ident : $dom_type:ty, $func:ident(&self, $($arg:ident : $ty:ty),*) -> $ret:ty) => {
+    ($dom:ident : $dom_type:ty, $func:ident($($arg:ident : $ty:ty),*) $(-> $ret:ty)?) => {
         $crate::paste! {
             #[no_mangle]
-            extern fn $func($dom: $dom_type, $($arg: $ty,)*) -> $ret {
+            extern fn $func($dom: $dom_type, $($arg: $ty,)*) $(-> $ret)? {
                 $dom.$func($($arg), *)
             }
 
             #[no_mangle]
-            extern fn [<$func _err>]($dom: $dom_type, $($arg: $ty,)*) -> $ret {
+            extern fn [<$func _err>]($dom: $dom_type, $($arg: $ty,)*) $(-> $ret)? {
                 #[cfg(feature = "proxy-log-error")]
                 ::console::println!("proxy: {} aborted", stringify!($func));
 
@@ -40,7 +40,7 @@ macro_rules! generate_trampoline {
             }
 
             extern {
-                fn [<$func _tramp>]($dom: $dom_type, $($arg: $ty,)*) -> $ret;
+                fn [<$func _tramp>]($dom: $dom_type, $($arg: $ty,)*) $(-> $ret)?;
             }
 
             trampoline!($func);
