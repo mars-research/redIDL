@@ -73,9 +73,9 @@ fn run(filename: &str) -> Result<syn::File, Box<dyn Error>> {
         true
     });
 
-    // Inject #![feature(global_asm, type_ascription)]
+    // Inject required features
     ast.attrs.push(
-        parse_quote!(#![feature(global_asm, type_ascription)])
+        parse_quote!(#![feature(global_asm, type_ascription, core_intrinsics, fmt_internals, derive_clone_copy, structural_match, rustc_private, derive_eq)])
     );
 
 

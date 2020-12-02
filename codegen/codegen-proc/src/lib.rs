@@ -25,7 +25,7 @@ pub fn generate_proxy(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let proxy_ident = format_ident!("{}Proxy", trait_path);
 
     let proxy = quote! {
-        struct #proxy_ident {
+        pub struct #proxy_ident {
             domain: ::alloc::boxed::Box<dyn #trait_path>,
             domain_id: u64,
         }
@@ -71,7 +71,7 @@ pub fn generate_proxy(_attr: TokenStream, item: TokenStream) -> TokenStream {
         cleaned_trait_methods
     };
 
-    let proxy_impl = generate_proxy_impl(trait_path, &proxy_ident, &trait_methods[..]);
+    let proxy_impl = generate_proxy_impl(trait_path, &proxy_ident, &trait_methods[..], &cleaned_trait_methods[..]);
     let trampolines = generate_trampolines(trait_path, &beautified_trait_path_lower_case, &cleaned_trait_methods[..]);
     
     let output = quote! {
@@ -108,8 +108,8 @@ fn generate_trampolines(trait_path: &Ident, beautified_trait_path_lower_case: &s
 }
 
 /// Generate proxy implementation, e.g., `impl DomC for DomCProxy`.
-fn generate_proxy_impl(trait_path: &syn::Ident, proxy_ident: &syn::Ident, methods: &[TraitItemMethod]) -> proc_macro2::TokenStream {
-    let proxy_impls = methods.iter().map(generate_proxy_impl_one);
+fn generate_proxy_impl(trait_path: &syn::Ident, proxy_ident: &syn::Ident, methods: &[TraitItemMethod], cleaned_methods: &[TraitItemMethod]) -> proc_macro2::TokenStream {
+    let proxy_impls = methods.iter().zip(cleaned_methods).map(|pair| generate_proxy_impl_one(pair.0, pair.1));
 
     quote! {
         impl #trait_path for #proxy_ident {
@@ -119,11 +119,12 @@ fn generate_proxy_impl(trait_path: &syn::Ident, proxy_ident: &syn::Ident, method
 }
 
 /// Generate the proxy implementation for one single method
-fn generate_proxy_impl_one(method: &TraitItemMethod) -> proc_macro2::TokenStream {
+fn generate_proxy_impl_one(method: &TraitItemMethod, cleaned_method: &TraitItemMethod) -> proc_macro2::TokenStream {
     let sig = &method.sig;
     let ident = &sig.ident;
     let trampoline_ident = format_ident!("{}_tramp", ident);
     let args = &sig.inputs;
+    let cleaned_args = &cleaned_method.sig.inputs;
     let return_ty = &sig.output;
     quote! {
         fn #ident(#args) #return_ty {
@@ -131,9 +132,9 @@ fn generate_proxy_impl_one(method: &TraitItemMethod) -> proc_macro2::TokenStream
             let caller_domain = unsafe { sys_update_current_domain_id(self.domain_id) };
     
             #[cfg(not(feature = "trampoline"))]
-            let r = self.domain.#ident(#args);
+            let r = self.domain.#ident(#cleaned_args);
             #[cfg(feature = "trampoline")]
-            let r = unsafe { #trampoline_ident(&self.domain, #args) };
+            let r = unsafe { #trampoline_ident(&self.domain, #cleaned_args) };
     
             // move thread back
             unsafe { sys_update_current_domain_id(caller_domain) };
