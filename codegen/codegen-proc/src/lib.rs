@@ -34,7 +34,7 @@ pub fn generate_proxy(_attr: TokenStream, item: TokenStream) -> TokenStream {
         unsafe impl Send for #proxy_ident {}
         
         impl #proxy_ident {
-            fn new(domain_id: u64, domain: ::alloc::boxed::Box<dyn #trait_path>) -> Self {
+            pub fn new(domain_id: u64, domain: ::alloc::boxed::Box<dyn #trait_path>) -> Self {
                 Self {
                     domain,
                     domain_id,
