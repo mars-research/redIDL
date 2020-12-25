@@ -96,7 +96,7 @@ fn generate_trampolines(trait_path: &Ident, beautified_trait_path_lower_case: &s
         .map(|method| {
             let sig = &method.sig;
             let ident = &sig.ident;
-            let domain_ident = syn::Ident::new(&format!("generated_proxy_domain_{}", beautified_trait_path_lower_case), Span::call_site());
+            let domain_ident = format_ident!("generated_proxy_domain_{}", beautified_trait_path_lower_case);
             let args = &sig.inputs;
             let return_ty = &sig.output;
             quote!(
@@ -109,7 +109,7 @@ fn generate_trampolines(trait_path: &Ident, beautified_trait_path_lower_case: &s
 
 /// Generate proxy implementation, e.g., `impl DomC for DomCProxy`.
 fn generate_proxy_impl(trait_path: &syn::Ident, proxy_ident: &syn::Ident, methods: &[TraitItemMethod], cleaned_methods: &[TraitItemMethod]) -> proc_macro2::TokenStream {
-    let proxy_impls = methods.iter().zip(cleaned_methods).map(|pair| generate_proxy_impl_one(pair.0, pair.1));
+    let proxy_impls = methods.iter().zip(cleaned_methods).map(|pair| generate_proxy_impl_one(trait_path, pair.0, pair.1));
 
     quote! {
         impl #trait_path for #proxy_ident {
@@ -119,10 +119,10 @@ fn generate_proxy_impl(trait_path: &syn::Ident, proxy_ident: &syn::Ident, method
 }
 
 /// Generate the proxy implementation for one single method
-fn generate_proxy_impl_one(method: &TraitItemMethod, cleaned_method: &TraitItemMethod) -> proc_macro2::TokenStream {
+fn generate_proxy_impl_one(trait_path: &syn::Ident, method: &TraitItemMethod, cleaned_method: &TraitItemMethod) -> proc_macro2::TokenStream {
     let sig = &method.sig;
     let ident = &sig.ident;
-    let trampoline_ident = format_ident!("{}_tramp", ident);
+    let trampoline_ident = format_ident!("{}_tramp", trampoline_ident(trait_path, ident));
     let args = &sig.inputs;
     let cleaned_args = &cleaned_method.sig.inputs;
     let return_ty = &sig.output;
@@ -142,6 +142,13 @@ fn generate_proxy_impl_one(method: &TraitItemMethod, cleaned_method: &TraitItemM
             r
         }
     }
+}
+
+/// Convert the method name to "{trait_name}_{method_name}"
+/// This step is necessary because there could be mutiple interface
+/// traits with the same method names.
+fn trampoline_ident(trait_path: &Ident, method: &Ident) -> Ident {
+    format_ident!("{}_{}", trait_path, method)
 }
 
 
