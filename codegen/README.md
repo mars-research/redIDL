@@ -12,8 +12,8 @@ This document will describe how the redIDL Codegen is implemented.
     callee domain returns, it will move the `RRef` objects back to the caller's domain, and returns
     the result back to the caller with an `Ok`. If the callee panics, the proxy will returns an
     `Err` instead.
-* cargo-expand: Merge all files in the crate and try to expand all macros as much as possible.
-    If the macro is not found, it will be kept as is.
+* [cargo-expand](https://github.com/dtolnay/cargo-expand): Merge all files in the crate and try to 
+    expand all macros as much as possible. If the macro is not found, it will be kept as is.
 
 # Proxy generation
 
