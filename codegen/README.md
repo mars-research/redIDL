@@ -15,12 +15,22 @@ This document will describe how the redIDL Codegen is implemented.
 * [cargo-expand](https://github.com/dtolnay/cargo-expand): Merge all files in the crate and try to 
     expand all macros as much as possible. If the macro is not found, it will be kept as is.
 
-# Proxy generation
+# Proxy Generation
 
 The codegen generates a proxy for each interface trait(i.e. traits marks with `#[interface]`). 
 The `#[interface]` attribute is implemented as an attribute procedure macro. 
 
-## Step 1: module resolution
+## Step 1: Merging Files
+
+We merge all interface files into one by using `cargo-expand` to make it easier for the following
+steps.
+
+## Step 2: Dependnency Injection
+
+We inject the correct cargo dependencies into the __Cargo.toml__ and the correct `use` statements 
+into each module. In this case, we will inject `use codegen_proc::generate_proxy as interface;`.
+
+## Step 3: Module Resolution
 
 Since the procedure macro only know about the syntax tree but it knows nothing about the type,
 we need to let it know what is the path of the trait should it try to implement a proxy for.
@@ -34,5 +44,9 @@ impl usr::rv6::Rv6 for Rv6Proxy {
 }
 ```
 
-To achieve this, we will add an addition pass of cargo-expand prior to the actual code generation.
+To achieve this, instead `codegen_proc::generate_proxy` to generate the proxy directly, we make
+it to generate `#[generate_proxy_helper(module_path!())]` instead. When we cargo expand this,
+it will give us `#[generate_proxy_helper(interface::rv6::Rv6)`. The `generate_proxy_helper`
+can then use the information to correctly generate the proxy.
+
 
