@@ -28,7 +28,8 @@ steps.
 ## Step 2: Dependnency Injection
 
 We inject the correct cargo dependencies into the __Cargo.toml__ and the correct `use` statements 
-into each module. In this case, we will inject `use codegen_proc::generate_proxy as interface;`.
+into each module. In this case, we will inject `use codegen_proc::generate_proxy as interface;`
+by using the binary `codegen-proxy`.
 
 ## Step 3: Module Resolution
 
@@ -46,7 +47,7 @@ impl usr::rv6::Rv6 for Rv6Proxy {
 
 To achieve this, instead `codegen_proc::generate_proxy` to generate the proxy directly, we make
 it to generate `#[generate_proxy_helper(module_path!())]` instead. When we cargo expand this,
-it will give us `#[generate_proxy_helper(interface::rv6::Rv6)`. The `generate_proxy_helper`
+it will give us `#[generate_proxy_helper("interface::rv6::Rv6")`. The `generate_proxy_helper`
 can then use the information to correctly generate the proxy.
 
 

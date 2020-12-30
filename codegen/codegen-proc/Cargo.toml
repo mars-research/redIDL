@@ -14,6 +14,6 @@ proc-macro = true
 rustflags = ["--cfg", "procmacro2_semver_exempt"]
 
 [dependencies]
-syn = { version = "1.0.48", features = ["full"]}
+syn = { version = "1.0.48", features = ["full", "extra-traits"]}
 quote = "1.0.7"
 proc-macro2 = { version = "1.0.24", features = ["nightly"] }

@@ -3,7 +3,7 @@
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::{quote, format_ident};
-use syn::{ItemTrait, TraitItemMethod, Ident, FnArg, Token, TraitItem};
+use syn::{parse_quote, ItemTrait, TraitItemMethod, Ident, FnArg, Token, TraitItem, MetaList};
 use syn::punctuated::Punctuated;
 
 // #[proc_macro_attribute]
@@ -11,12 +11,55 @@ use syn::punctuated::Punctuated;
 //     generate_proxy(attr, item)
 // }
 
+#[proc_macro_attribute]
+pub fn redidl_resolve_module_and_generate_proxy(attr: TokenStream, item: TokenStream) -> TokenStream {
+    if !attr.is_empty() {
+        panic!("Macro generate_proxy does not take any attribute. Attributes: {}", attr);
+    }
+    
+    let mut input: ItemTrait = syn::parse(item).expect("interface definition must be a valid trait definition");
+
+    // Add module_path and generate_prxy attributes and return
+    input.attrs.push(
+        parse_quote!(
+            #[redidl_codegen_generate_proxy_placeholder_]
+        )
+    );
+    input.attrs.push(
+        parse_quote!(
+            #[module_path = module_path!()]
+        )
+    );
+
+    TokenStream::from(quote!(#input))
+}
+
+
+
 /// Generate the proxy for an interface definition.
 #[proc_macro_attribute]
-pub fn generate_proxy(_attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn redidl_generate_proxy(attr: TokenStream, item: TokenStream) -> TokenStream {
     // Parse the input tokens into a syntax tree
     let input: ItemTrait = syn::parse(item).expect("interface definition must be a valid trait definition");
     let input_copy = input.clone();
+
+    // Extract module path
+    let module_path = input.attrs.iter().filter_map(
+        |attr| {
+            if let Ok(syn::Meta::NameValue(meta)) = attr.parse_meta(){
+                if let Some(ident) = meta.path.get_ident() {
+                    if ident.to_string() == "module_path" {
+                        if let syn::Lit::Str(lit) = meta.lit {
+                            return Some(lit);
+                        } else {
+                            panic!("module_path must be a string")
+                        }
+                    }
+                }
+            }
+            None
+        }
+    ).next().expect("module_path not found");
 
     let trait_path = &input.ident;
     let beautified_trait_path = input.ident.to_string().replace("::", "_");
