@@ -25,11 +25,13 @@ The `#[interface]` attribute is implemented as an attribute procedure macro.
 We merge all interface files into one by using `cargo-expand` to make it easier for the following
 steps.
 
-## Step 2: Dependnency Injection
+## Step 2: Dependnency Injection and Dependency Correction
 
 We inject the correct cargo dependencies into the __Cargo.toml__ and the correct `use` statements 
 into each module. In this case, we will inject `use codegen_proc::generate_proxy as interface;`
 by using the binary `codegen-proxy`.
+
+TODO: describe how and why we change `use crate::...` to `use usr::...`.
 
 ## Step 3: Module Resolution
 
@@ -50,4 +52,7 @@ it to generate `#[generate_proxy_helper(module_path!())]` instead. When we cargo
 it will give us `#[generate_proxy_helper("interface::rv6::Rv6")`. The `generate_proxy_helper`
 can then use the information to correctly generate the proxy.
 
+## Step 4: Proxy and Trampoline Generation
+
+TODO
 
