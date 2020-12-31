@@ -1,5 +1,5 @@
 [package]
-name = "codegen-proxy"
+name = "cleanser"
 version = "0.1.0"
 authors = [
     "Tianjiao Huang <tianjih1@uci.edu>",
