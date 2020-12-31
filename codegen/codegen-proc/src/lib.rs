@@ -6,10 +6,7 @@ use quote::{quote, format_ident};
 use syn::{parse_quote, ItemTrait, TraitItemMethod, Ident, FnArg, Token, TraitItem, MetaList};
 use syn::punctuated::Punctuated;
 
-// #[proc_macro_attribute]
-// pub fn interface(attr: TokenStream, item: TokenStream) -> TokenStream  {
-//     generate_proxy(attr, item)
-// }
+static USR_LIB_NAME: &'static str = "usr";
 
 #[proc_macro_attribute]
 pub fn redidl_resolve_module_and_generate_proxy(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -59,7 +56,7 @@ pub fn redidl_generate_proxy(attr: TokenStream, item: TokenStream) -> TokenStrea
             }
             None
         }
-    ).next().expect("module_path not found");
+    ).next().expect("module_path not found").value();
 
     let trait_path = &input.ident;
     let beautified_trait_path = input.ident.to_string().replace("::", "_");
@@ -116,11 +113,13 @@ pub fn redidl_generate_proxy(attr: TokenStream, item: TokenStream) -> TokenStrea
 
     let proxy_impl = generate_proxy_impl(trait_path, &proxy_ident, &trait_methods[..], &cleaned_trait_methods[..]);
     let trampolines = generate_trampolines(trait_path, &beautified_trait_path_lower_case, &cleaned_trait_methods[..]);
+
+    let import_path_segs = generate_import_path_segs(&module_path, trait_path);
     
     let output = quote! {
         // An extra copy of interface definition is copied over to the proxy crate so that 
         // we don't have to resolve the dependencies
-        #input_copy
+        use ::#(#import_path_segs)::*;
 
         #proxy
 
@@ -131,6 +130,15 @@ pub fn redidl_generate_proxy(attr: TokenStream, item: TokenStream) -> TokenStrea
     
     // Hand the output tokens back to the compiler
     TokenStream::from(output)
+}
+
+fn generate_import_path_segs(module_path: &str, trait_ident: &Ident) -> Vec<Ident> {
+    let mut rtn: Vec<Ident> = vec![Ident::new(USR_LIB_NAME, trait_ident.span())];
+    for path_segment in module_path.split("::").skip(1) {
+        rtn.push(Ident::new(path_segment, trait_ident.span()));
+    }
+    rtn.push(format_ident!("{}", trait_ident));
+    rtn
 }
 
 /// Generate trampolines for `methods`.
