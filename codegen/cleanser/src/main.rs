@@ -43,61 +43,86 @@ fn run(args: ArgMatches) -> Result<(), Box<dyn Error>> {
 
     // Remove prelude stuff
     if args.is_present("remove-prelude") {
-        // Remove `#![feature(prelude_import)]`
-        ast.attrs.retain(|attr| {
-            if let Ok(Meta::List(meta)) = attr.parse_meta() {
-                if !meta.path.is_ident("feature") {
-                    return true;
-                } 
-    
-                for meta in meta.nested {
-                    if let NestedMeta::Meta(meta) = meta {
-                        if meta.path().is_ident("prelude_import") {
-                            return false;
-                        }
-                    } 
-                }
-            }
-    
-            true
-        });
-        // Remove ```
-        // #[prelude_import]
-        // use core::prelude::v1::*;
-        // ```
-        ast.items.retain(|item| {
-            if let Item::Use(item) = item {
-                for attr in &item.attrs {
-                    if let Ok(meta) = attr.parse_meta() {
-                        if meta.path().is_ident("prelude_import") {
-                            return false;
-                        }
-                    } 
-                }
-            }
-    
-            true
-        });
+        remove_prelude(&mut ast);
     }
 
     // Inject dependencies
     if args.is_present("inject-dependency") {
-        // Inject required features
-        ast.attrs.push(
-            parse_quote!(#![feature(global_asm, type_ascription, core_intrinsics, fmt_internals, derive_clone_copy, structural_match, rustc_private, derive_eq, extended_key_value_attributes)])
-        );
-    
-    
-        // Recursively inject import statements in each module
-        for item in ast.items.iter_mut() {
-            inject_import_recursive(item)?
-        }
+        inject_dependency(&mut ast)?;
     }
 
 
     // Write output
     let output = quote!(#ast).to_string();
     std::fs::write(&args.value_of("OUTPUT").ok_or(VarError::NotPresent)?, output)?;
+
+    Ok(())
+}
+
+fn remove_prelude(ast: &mut syn::File) {
+    // Remove `#![feature(prelude_import)]`
+    ast.attrs.retain(|attr| {
+        if let Ok(Meta::List(meta)) = attr.parse_meta() {
+            if !meta.path.is_ident("feature") {
+                return true;
+            } 
+
+            for meta in meta.nested {
+                if let NestedMeta::Meta(meta) = meta {
+                    if meta.path().is_ident("prelude_import") {
+                        return false;
+                    }
+                } 
+            }
+        }
+
+        true
+    });
+
+    ast.items.retain(|item| {
+        // Remove ```
+        // #[prelude_import]
+        // use core::prelude::v1::*;
+        // ```
+        if let Item::Use(item) = item {
+            for attr in &item.attrs {
+                if let Ok(meta) = attr.parse_meta() {
+                    if meta.path().is_ident("prelude_import") {
+                        return false;
+                    }
+                } 
+            }
+        }
+
+        // Remove 
+        // ```
+        // #[macro_use]
+        // extern crate compiler_builtins;
+        // #[macro_use]
+        // extern crate core;
+        // ```
+        if let Item::ExternCrate(item) = item {
+            let ident = item.ident.to_string();
+            if ident == "compiler_builtins" || ident == "core" {
+                return false;
+            } 
+        }
+
+        true
+    });
+}
+
+fn inject_dependency(ast: &mut syn::File) -> Result<(), Box<dyn Error>> {
+    // Inject required features
+    ast.attrs.push(
+        parse_quote!(#![feature(global_asm, type_ascription, core_intrinsics, fmt_internals, derive_clone_copy, structural_match, rustc_private, derive_eq, extended_key_value_attributes)])
+    );
+
+
+    // Recursively inject import statements in each module
+    for item in ast.items.iter_mut() {
+        inject_import_recursive(item)?;
+    }
 
     Ok(())
 }
