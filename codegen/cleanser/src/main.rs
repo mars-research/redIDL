@@ -22,6 +22,9 @@ fn main() {
                                 .help("Sets the output file to use.")
                                 .required(true)
                                 .index(2))
+                            .arg(Arg::with_name("replace-struct")
+                                .long("replace-struct")
+                                .help("Replace struct definitions with use statements if set."))
                             .arg(Arg::with_name("remove-prelude")
                                 .long("remove-prelude")
                                 .help("Remove prelude if set."))
@@ -45,6 +48,12 @@ fn run(args: ArgMatches) -> Result<(), Box<dyn Error>> {
     file.read_to_string(&mut content)?;
 
     let mut ast = syn::parse_file(&content)?;
+
+    // Remove structs definitions
+    // They will be defined in `use`
+    if args.is_present("replace-struct") {
+        replace_structs(&mut ast);
+    }
 
     // Remove prelude stuff
     if args.is_present("remove-prelude") {
@@ -205,5 +214,42 @@ fn fix_import_recursive(item: &mut syn::Item) -> Result<(), Box<dyn Error>> {
     };
 
     Ok(())
+}
+
+fn replace_structs(ast: &mut syn::File) {
+    // Remove structs
+    ast.items.retain(|item| {
+        match item {
+            Item::Struct(_) => false,
+            _ => true,
+        }
+    });
+
+    // Go into each module and remove structs
+    for item in &mut ast.items {
+        match item {
+            Item::Mod(item) => replace_structs_recursive(item),
+            _ => {},
+        }
+    };
+}
+
+/// Recursively remove struct definitions in each module
+fn replace_structs_recursive(item: &mut syn::ItemMod) {
+    if let Some((_, content)) = &mut item.content {
+        content.retain(|item| {
+            match item {
+                Item::Struct(_) => false,
+                _ => true,
+            }
+        });
+    
+        for item in content {
+            match item {
+                Item::Mod(item) => replace_structs_recursive(item),
+                _ => {},
+            }
+        };
+    }
 }
 
