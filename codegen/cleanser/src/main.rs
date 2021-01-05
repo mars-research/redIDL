@@ -1,8 +1,8 @@
 use std::env;
 use std::error::Error;
-use std::env::VarError;
 use std::fs::File;
 use std::io::Read;
+use std::process::Command;
 
 use clap::{Arg, App, ArgMatches};
 use syn::{Item, Stmt, Meta, NestedMeta, parse_quote};
@@ -22,6 +22,9 @@ fn main() {
                                 .help("Sets the output file to use.")
                                 .required(true)
                                 .index(2))
+                            .arg(Arg::with_name("directory-mode")
+                                .long("directory-mode")
+                                .help("Operate on a directory instead of a file uf set."))
                             .arg(Arg::with_name("replace-struct")
                                 .long("replace-struct")
                                 .help("Replace struct definitions with use statements if set."))
@@ -37,13 +40,43 @@ fn main() {
                             .get_matches();
 
 
-    run(matches).unwrap();
+    run(&matches).unwrap();
 }
 
 
 
-fn run(args: ArgMatches) -> Result<(), Box<dyn Error>> {
-    let mut file = File::open(args.value_of("INPUT").ok_or(VarError::NotPresent)?)?;
+fn run(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    let input_path = args.value_of("INPUT").unwrap();
+    let output_path = args.value_of("OUTPUT").unwrap();
+
+    if !args.is_present("directory-mode") {
+        return run_single_file(args, &input_path, &output_path);
+    }
+
+    // Blindly copy input to output so we don't have to create the directory ourselves
+    Command::new("bash")
+        .arg("-c")
+        .arg(format!("cp -r {} {}", input_path, output_path))
+        .output()?;
+
+    let find_output = Command::new("bash")
+        .arg("-c")
+        .arg(format!("find {} -name '*.rs'", output_path))
+        .output()?;
+
+    let files = String::from_utf8(find_output.stdout)?;
+
+    for file in files.trim().split("\n") {
+        run_single_file(&args, &file, &file)?
+    }
+
+    Ok(())
+}
+
+fn run_single_file(args: &ArgMatches, input_path: &str, output_path: &str) -> Result<(), Box<dyn Error>> {
+    println!("Running cleanser on {}, outputing to {}", input_path, output_path);
+
+    let mut file = File::open(input_path)?;
     let mut content = String::new();
     file.read_to_string(&mut content)?;
 
@@ -73,7 +106,7 @@ fn run(args: ArgMatches) -> Result<(), Box<dyn Error>> {
 
     // Write output
     let output = quote!(#ast).to_string();
-    std::fs::write(&args.value_of("OUTPUT").ok_or(VarError::NotPresent)?, output)?;
+    std::fs::write(output_path, output)?;
 
     Ok(())
 }
