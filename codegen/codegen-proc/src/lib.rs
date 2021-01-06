@@ -10,6 +10,10 @@ pub fn redidl_resolve_module_and_generate_proxy(attr: TokenStream, item: TokenSt
     crate::helper::redidl_resolve_module_and_generate_proxy_impl(attr, item)
 }
 
+#[proc_macro_attribute]
+pub fn redidl_generate_import(attr: TokenStream, item: TokenStream) -> TokenStream {
+    crate::helper::redidl_generate_import_impl(attr, item)
+}
 
 
 /// Generate the proxy for an interface definition.

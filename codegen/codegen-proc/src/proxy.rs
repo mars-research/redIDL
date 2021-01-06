@@ -3,9 +3,6 @@ use quote::{quote, format_ident};
 use syn::{ItemTrait, TraitItemMethod, Ident, FnArg, Token, TraitItem};
 use syn::punctuated::Punctuated;
 
-static USR_LIB_NAME: &'static str = "usr";
-
-
 pub fn redidl_generate_proxy_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
     // Parse the input tokens into a syntax tree
     let input: ItemTrait = syn::parse(item).expect("interface definition must be a valid trait definition");
@@ -84,7 +81,7 @@ pub fn redidl_generate_proxy_impl(_attr: TokenStream, item: TokenStream) -> Toke
     let proxy_impl = generate_proxy_impl(trait_path, &proxy_ident, &trait_methods[..], &cleaned_trait_methods[..]);
     let trampolines = generate_trampolines(trait_path, &beautified_trait_path_lower_case, &cleaned_trait_methods[..]);
 
-    let import_path_segs = generate_import_path_segs(&module_path, trait_path);
+    let import_path_segs = crate::helper::generate_import_path_segs(&module_path, trait_path);
     
     let output = quote! {
         // An extra copy of interface definition is copied over to the proxy crate so that 
@@ -102,14 +99,7 @@ pub fn redidl_generate_proxy_impl(_attr: TokenStream, item: TokenStream) -> Toke
     TokenStream::from(output)
 }
 
-fn generate_import_path_segs(module_path: &str, trait_ident: &Ident) -> Vec<Ident> {
-    let mut rtn: Vec<Ident> = vec![Ident::new(USR_LIB_NAME, trait_ident.span())];
-    for path_segment in module_path.split("::").skip(1) {
-        rtn.push(Ident::new(path_segment, trait_ident.span()));
-    }
-    rtn.push(format_ident!("{}", trait_ident));
-    rtn
-}
+
 
 /// Generate trampolines for `methods`.
 fn generate_trampolines(trait_path: &Ident, beautified_trait_path_lower_case: &str,  methods: &[TraitItemMethod]) -> proc_macro2::TokenStream {

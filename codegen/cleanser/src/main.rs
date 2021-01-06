@@ -108,6 +108,12 @@ fn run_single_file(args: &ArgMatches, input_path: &str, output_path: &str) -> Re
     let output = quote!(#ast).to_string();
     std::fs::write(output_path, output)?;
 
+    // Format output file
+    let _ = Command::new("bash")
+        .arg("-c")
+        .arg(format!("rustfmt {}", output_path))
+        .output();
+
     Ok(())
 }
 
@@ -192,7 +198,7 @@ fn inject_import_recursive(item: &mut Item) -> Result<(), Box<dyn Error>> {
 
                 let injected_import_statements: Vec<Stmt> =  parse_quote! {
                     use codegen_proc::redidl_resolve_module_and_generate_proxy as interface;
-                    use codegen_proc::redidl_generate_proxy;
+                    use codegen_proc::{redidl_generate_proxy, redidl_generate_import};
                     use unwind::trampoline;
                     use libsyscalls::syscalls::{sys_get_current_domain_id, sys_update_current_domain_id, sys_discard_cont};
                 };
@@ -255,6 +261,16 @@ fn replace_definitions(ast: &mut syn::File) {
 
 /// Recursively remove struct definitions in each module
 fn replace_definitions_recursive(items: &mut Vec<syn::Item>) {
+    // Remove `impl` blocks.
+    items.retain(|item| {
+        if let Item::Impl(_) = item {
+            false
+        }  else {
+            true
+        }
+    });
+
+    // Replace types with import statements
     for item in items.iter_mut() {
         match item {
             Item::Const(x) => replace_if_public!(item, x),
@@ -297,7 +313,7 @@ macro_rules! replace_if_public {
         if let syn::Visibility::Public(_) = $item.vis {
             let ident = &$item.ident;
             let st: syn::ItemStruct = parse_quote! {
-                #[redidl_generate_import]
+                #[redidl_generate_import_placeholder_]
                 #[module_path = module_path!()]
                 struct #ident {}
             };
