@@ -25,9 +25,9 @@ fn main() {
                             .arg(Arg::with_name("directory-mode")
                                 .long("directory-mode")
                                 .help("Operate on a directory instead of a file uf set."))
-                            .arg(Arg::with_name("replace-struct")
-                                .long("replace-struct")
-                                .help("Replace struct definitions with use statements if set."))
+                            .arg(Arg::with_name("replace-definitions")
+                                .long("replace-definitions")
+                                .help("Replace definitions with use statements if set."))
                             .arg(Arg::with_name("remove-prelude")
                                 .long("remove-prelude")
                                 .help("Remove prelude if set."))
@@ -84,8 +84,8 @@ fn run_single_file(args: &ArgMatches, input_path: &str, output_path: &str) -> Re
 
     // Remove structs definitions
     // They will be defined in `use`
-    if args.is_present("replace-struct") {
-        replace_structs(&mut ast);
+    if args.is_present("replace-definitions") {
+        replace_definitions(&mut ast);
     }
 
     // Remove prelude stuff
@@ -249,40 +249,60 @@ fn fix_import_recursive(item: &mut syn::Item) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn replace_structs(ast: &mut syn::File) {
-    // Remove structs
-    ast.items.retain(|item| {
-        match item {
-            Item::Struct(_) => false,
-            _ => true,
-        }
-    });
+fn replace_definitions(ast: &mut syn::File) {
+    replace_definitions_recursive(&mut ast.items)
+}
 
-    // Go into each module and remove structs
-    for item in &mut ast.items {
+/// Recursively remove struct definitions in each module
+fn replace_definitions_recursive(items: &mut Vec<syn::Item>) {
+    for item in items.iter_mut() {
         match item {
-            Item::Mod(item) => replace_structs_recursive(item),
+            Item::Const(x) => replace_if_public!(item, x),
+            Item::Enum(x) => replace_if_public!(item, x),
+            Item::Static(x) => replace_if_public!(item, x),
+            Item::Struct(x) => replace_if_public!(item, x),
+            Item::TraitAlias(x) => replace_if_public!(item, x),
+            Item::Type(x) => replace_if_public!(item, x),
+            Item::Union(x) => replace_if_public!(item, x),
+            Item::Trait(tra) => {
+                // Replace the trait only if it is not a interface
+                let is_interface = tra.attrs.iter().find(
+                    |attr| {
+                        if let Ok(syn::Meta::Path(meta)) = attr.parse_meta(){
+                            if meta.is_ident("interface") {
+                                return true;
+                            }
+                        }
+                        false
+                    }
+                );
+                if is_interface.is_none() {
+                    replace_if_public!(item, tra);
+                }
+            },
+            Item::Mod(md) => {
+                if let Some((_, items)) = &mut md.content {
+                    replace_definitions_recursive(items)
+                }
+            },
             _ => {},
         }
     };
 }
 
-/// Recursively remove struct definitions in each module
-fn replace_structs_recursive(item: &mut syn::ItemMod) {
-    if let Some((_, content)) = &mut item.content {
-        content.retain(|item| {
-            match item {
-                Item::Struct(_) => false,
-                _ => true,
-            }
-        });
-    
-        for item in content {
-            match item {
-                Item::Mod(item) => replace_structs_recursive(item),
-                _ => {},
-            }
-        };
-    }
+
+#[macro_export]
+macro_rules! replace_if_public {
+    ($dest: ident, $item: ident) => {
+        if let syn::Visibility::Public(_) = $item.vis {
+            let ident = &$item.ident;
+            let st: syn::ItemStruct = parse_quote! {
+                #[redidl_generate_import]
+                #[module_path = module_path!()]
+                struct #ident {}
+            };
+            *$dest = syn::Item::Struct(st);
+        }
+    };
 }
 
