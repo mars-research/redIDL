@@ -43,7 +43,7 @@ macro_rules! generate_trampoline {
                 fn [<$dom _ $func _tramp>]($dom: $dom_type, $($arg: $ty,)*) $(-> $ret)?;
             }
 
-            trampoline!($func);
+            trampoline!([<$dom _ $func>]);
         }
     };
 }

@@ -184,7 +184,7 @@ fn remove_prelude(ast: &mut syn::File) {
 fn inject_dependency(ast: &mut syn::File) -> Result<(), Box<dyn Error>> {
     // Inject required features
     ast.attrs.push(
-        parse_quote!(#![feature(global_asm, type_ascription, core_intrinsics, fmt_internals, derive_clone_copy, structural_match, rustc_private, derive_eq, extended_key_value_attributes)])
+        parse_quote!(#![feature(global_asm, type_ascription, core_intrinsics, fmt_internals, derive_clone_copy, structural_match, rustc_private, derive_eq)])
     );
 
 
@@ -385,7 +385,6 @@ macro_rules! is_auto_generated {
             for attr in &$item.attrs {
                 if let Ok(meta) = attr.parse_meta() {
                     if meta.path().is_ident("automatically_derived") {
-                        panic!("hi {:#?}", $item);
                         ret = true;
                         break;
                     }
