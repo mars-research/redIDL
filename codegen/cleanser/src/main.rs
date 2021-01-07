@@ -37,6 +37,10 @@ fn main() {
                             .arg(Arg::with_name("fix-use")
                                 .long("fix-use")
                                 .help("Fix use statements if set."))
+                            .arg(Arg::with_name("remove-auto-derived")
+                                .long("remove-auto-derived")
+                                .help("Remove auto derived items if set."))
+                                
                             .get_matches();
 
 
@@ -101,6 +105,11 @@ fn run_single_file(args: &ArgMatches, input_path: &str, output_path: &str) -> Re
     // Fix imports
     if args.is_present("fix-use") {
         fix_import(&mut ast)?;
+    }
+
+    // Fix imports
+    if args.is_present("remove-auto-derived") {
+        remove_auto_derived(&mut ast);
     }
 
 
@@ -306,6 +315,45 @@ fn replace_definitions_recursive(items: &mut Vec<syn::Item>) {
     };
 }
 
+fn remove_auto_derived(ast: &mut syn::File) {
+    remove_auto_derived_recursive(&mut ast.items)
+}
+
+/// Recursively remove item with attribute `#[automatically_derived]`.
+fn remove_auto_derived_recursive(items: &mut Vec<syn::Item>) {
+    // Remove item with attribute `#[automatically_derived]`.
+    items.retain(|item| {
+        match item {
+            Item::Const(x) => is_not_auto_generated!(x),
+            Item::Enum(x) => is_not_auto_generated!(x),
+            Item::ExternCrate(x) => is_not_auto_generated!(x),
+            Item::Fn(x) => is_not_auto_generated!(x),
+            Item::ForeignMod(x) => is_not_auto_generated!(x),
+            Item::Impl(x) => is_not_auto_generated!(x),
+            Item::Macro(x) => is_not_auto_generated!(x),
+            Item::Macro2(x) => is_not_auto_generated!(x),
+            Item::Mod(x) => is_not_auto_generated!(x),
+            Item::Static(x) => is_not_auto_generated!(x),
+            Item::Struct(x) => is_not_auto_generated!(x),
+            Item::Trait(x) => is_not_auto_generated!(x),
+            Item::TraitAlias(x) => is_not_auto_generated!(x),
+            Item::Type(x) => is_not_auto_generated!(x),
+            Item::Union(x) => is_not_auto_generated!(x),
+            Item::Use(x) => is_not_auto_generated!(x),
+            _ => false,
+        }
+    });
+
+    // Recursion
+    // Replace types with import statements
+    for item in items {
+        if let Item::Mod(md) = item {
+            if let Some((_, items)) = &mut md.content {
+                remove_auto_derived_recursive(items);
+            }
+        }
+    }
+}
 
 #[macro_export]
 macro_rules! replace_if_public {
@@ -318,6 +366,32 @@ macro_rules! replace_if_public {
                 struct #ident {}
             };
             *$dest = syn::Item::Struct(st);
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! is_not_auto_generated {
+    ($item: ident) => {
+        !is_auto_generated!($item)
+    };
+}
+
+#[macro_export]
+macro_rules! is_auto_generated {
+    ($item: ident) => {
+        {
+            let mut ret = false;
+            for attr in &$item.attrs {
+                if let Ok(meta) = attr.parse_meta() {
+                    if meta.path().is_ident("automatically_derived") {
+                        panic!("hi {:#?}", $item);
+                        ret = true;
+                        break;
+                    }
+                } 
+            }
+            ret
         }
     };
 }
