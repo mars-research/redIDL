@@ -1,3 +1,7 @@
+# DEPRECATED
+
+__Replaced by ngc__ 
+
 # IDL Code Generation
 
 This document will describe how the redIDL Codegen is implemented.
