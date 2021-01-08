@@ -25,15 +25,13 @@ pub fn redidl_generate_proxy_impl(_attr: TokenStream, item: TokenStream) -> Toke
         }
     ).next().expect("module_path not found").value();
 
-    let trait_path = &input.ident;
-    let beautified_trait_path = input.ident.to_string().replace("::", "_");
-    let beautified_trait_path_lower_case = beautified_trait_path.to_lowercase();
+    let trait_ident = &input.ident;
 
-    let proxy_ident = format_ident!("{}Proxy", trait_path);
+    let proxy_ident = format_ident!("{}Proxy", trait_ident);
 
     let proxy = quote! {
         pub struct #proxy_ident {
-            domain: ::alloc::boxed::Box<dyn #trait_path>,
+            domain: ::alloc::boxed::Box<dyn #trait_ident>,
             domain_id: u64,
         }
         
@@ -41,7 +39,7 @@ pub fn redidl_generate_proxy_impl(_attr: TokenStream, item: TokenStream) -> Toke
         unsafe impl Send for #proxy_ident {}
         
         impl #proxy_ident {
-            pub fn new(domain_id: u64, domain: ::alloc::boxed::Box<dyn #trait_path>) -> Self {
+            pub fn new(domain_id: u64, domain: ::alloc::boxed::Box<dyn #trait_ident>) -> Self {
                 Self {
                     domain,
                     domain_id,
@@ -78,10 +76,10 @@ pub fn redidl_generate_proxy_impl(_attr: TokenStream, item: TokenStream) -> Toke
         cleaned_trait_methods
     };
 
-    let proxy_impl = generate_proxy_impl(trait_path, &proxy_ident, &trait_methods[..], &cleaned_trait_methods[..]);
-    let trampolines = generate_trampolines(trait_path, &beautified_trait_path_lower_case, &cleaned_trait_methods[..]);
+    let proxy_impl = generate_proxy_impl(trait_ident, &proxy_ident, &trait_methods[..], &cleaned_trait_methods[..]);
+    let trampolines = generate_trampolines(trait_ident, &cleaned_trait_methods[..]);
 
-    let import_path_segs = crate::helper::generate_import_path_segs(&module_path, trait_path);
+    let import_path_segs = crate::helper::generate_import_path_segs(&module_path, trait_ident);
     
     let output = quote! {
         // An extra copy of interface definition is copied over to the proxy crate so that 
@@ -102,16 +100,16 @@ pub fn redidl_generate_proxy_impl(_attr: TokenStream, item: TokenStream) -> Toke
 
 
 /// Generate trampolines for `methods`.
-fn generate_trampolines(trait_path: &Ident, beautified_trait_path_lower_case: &str,  methods: &[TraitItemMethod]) -> proc_macro2::TokenStream {
+fn generate_trampolines(trait_ident: &Ident, methods: &[TraitItemMethod]) -> proc_macro2::TokenStream {
     let trampolines = methods.iter()
         .map(|method| {
             let sig = &method.sig;
             let ident = &sig.ident;
-            let domain_ident = format_ident!("generated_proxy_domain_{}", beautified_trait_path_lower_case);
+            let domain_ident = format_ident!("generated_proxy_domain_{}", trait_ident);
             let args = &sig.inputs;
             let return_ty = &sig.output;
             quote!(
-                ::codegen_lib::generate_trampoline!(#domain_ident: &alloc::boxed::Box<dyn #trait_path>, #ident(#args) #return_ty);
+                ::codegen_lib::generate_trampoline!(#domain_ident: &alloc::boxed::Box<dyn #trait_ident>, #ident(#args) #return_ty);
             )
         });
 
@@ -119,21 +117,21 @@ fn generate_trampolines(trait_path: &Ident, beautified_trait_path_lower_case: &s
 }
 
 /// Generate proxy implementation, e.g., `impl DomC for DomCProxy`.
-fn generate_proxy_impl(trait_path: &syn::Ident, proxy_ident: &syn::Ident, methods: &[TraitItemMethod], cleaned_methods: &[TraitItemMethod]) -> proc_macro2::TokenStream {
-    let proxy_impls = methods.iter().zip(cleaned_methods).map(|pair| generate_proxy_impl_one(trait_path, pair.0, pair.1));
+fn generate_proxy_impl(trait_ident: &syn::Ident, proxy_ident: &syn::Ident, methods: &[TraitItemMethod], cleaned_methods: &[TraitItemMethod]) -> proc_macro2::TokenStream {
+    let proxy_impls = methods.iter().zip(cleaned_methods).map(|pair| generate_proxy_impl_one(trait_ident, pair.0, pair.1));
 
     quote! {
-        impl #trait_path for #proxy_ident {
+        impl #trait_ident for #proxy_ident {
             #(#proxy_impls)*
         }
     }
 }
 
 /// Generate the proxy implementation for one single method
-fn generate_proxy_impl_one(trait_path: &syn::Ident, method: &TraitItemMethod, cleaned_method: &TraitItemMethod) -> proc_macro2::TokenStream {
+fn generate_proxy_impl_one(trait_ident: &syn::Ident, method: &TraitItemMethod, cleaned_method: &TraitItemMethod) -> proc_macro2::TokenStream {
     let sig = &method.sig;
     let ident = &sig.ident;
-    let trampoline_ident = format_ident!("{}_tramp", trampoline_ident(trait_path, ident));
+    let trampoline_ident = format_ident!("{}_tramp", trampoline_ident(trait_ident, ident));
     let args = &sig.inputs;
     let cleaned_args = &cleaned_method.sig.inputs;
     let return_ty = &sig.output;
@@ -158,6 +156,6 @@ fn generate_proxy_impl_one(trait_path: &syn::Ident, method: &TraitItemMethod, cl
 /// Convert the method name to "{trait_name}_{method_name}"
 /// This step is necessary because there could be mutiple interface
 /// traits with the same method names.
-fn trampoline_ident(trait_path: &Ident, method: &Ident) -> Ident {
-    format_ident!("{}_{}", trait_path, method)
+fn trampoline_ident(trait_ident: &Ident, method: &Ident) -> Ident {
+    format_ident!("generated_proxy_domain_{}_{}", trait_ident, method)
 }
