@@ -1,5 +1,6 @@
 use crate::{has_attribute, remove_attribute, get_proxy_mod};
 
+use paste::paste;
 use quote::{quote, format_ident};
 use syn::{parse_quote, Item, ItemTrait, ItemFn, ItemMod, TraitItemMethod, Ident, FnArg, Token, TraitItem};
 use syn::punctuated::Punctuated;
@@ -91,15 +92,55 @@ fn generate_trampolines(trait_ident: &Ident, methods: &[TraitItemMethod]) -> pro
         .map(|method| {
             let sig = &method.sig;
             let ident = &sig.ident;
-            let domain_ident = format_ident!("generated_proxy_domain_{}", trait_ident);
             let args = &sig.inputs;
             let return_ty = &sig.output;
-            quote!(
-                ::codegen_lib::generate_trampoline!(#domain_ident: &alloc::boxed::Box<dyn #trait_ident>, #ident(#args) #return_ty);
-            )
+
+            let domain_variable_ident = format_ident!("redidl_generated_domain_{}", trait_ident.to_string().to_lowercase());
+            let trampoline_ident = format_ident!("{}_{}", trait_ident, ident);
+            let trampoline_err_ident = format_ident!("{}_{}_err", trait_ident, ident);
+            let trampoline_addr_ident = format_ident!("{}_{}_addr", trait_ident, ident);
+            let trampoline_tramp_ident = format_ident!("{}_{}_tramp", trait_ident, ident);
+            
+            quote! {
+                // Wrapper of the original function.
+                // The trampoline should call this after saving the continuation stack.
+                #[no_mangle]
+                extern fn #trampoline_ident(#domain_variable_ident: #trait_ident, #args) #return_ty {
+                    #domain_variable_ident.#ident(#args)
+                }
+    
+                // When the call panics, the continuation stack will jump this function.
+                // This function will return a `RpcError::panic` to the caller domain.
+                #[no_mangle]
+                extern fn #trampoline_err_ident(#domain_variable_ident: #trait_ident, #args) #return_ty  {
+                    #[cfg(feature = "proxy-log-error")]
+                    ::console::println!("proxy: {} aborted", stringify!(#ident));
+    
+                    Err(unsafe{::usr::rpc::RpcError::panic()})
+                }
+    
+                // A workaround to get the address of the error function
+                #[no_mangle]
+                extern "C" fn #trampoline_addr_ident() -> u64 {
+                    #trampoline_err_ident as u64
+                }
+                
+                // FFI to the trampoline.
+                extern {
+                    fn #trampoline_tramp_ident(#domain_variable_ident: #trait_ident, #args) #return_ty;
+                }
+    
+                ::unwind::trampoline!(#trampoline_ident);
+            }
         });
 
-    quote! { #(#trampolines)* }
+    quote! {
+        // Trampoline generation begins
+
+        #(#trampolines)*
+
+        // Trampoline generation ends
+    }
 }
 
 /// Generate proxy implementation, e.g., `impl DomC for DomCProxy`.
@@ -117,7 +158,7 @@ fn generate_proxy_impl(trait_ident: &Ident, proxy_ident: &Ident, methods: &[Trai
 fn generate_proxy_impl_one(trait_ident: &Ident, method: &TraitItemMethod, cleaned_method: &TraitItemMethod) -> ItemFn {
     let sig = &method.sig;
     let ident = &sig.ident;
-    let trampoline_ident = format_ident!("{}_tramp", trampoline_ident(trait_ident, ident));
+    let trampoline_ident = format_ident!("{}_{}_tramp", trait_ident, ident);
     let args = &sig.inputs;
     let cleaned_args = &cleaned_method.sig.inputs;
     let return_ty = &sig.output;
@@ -137,11 +178,4 @@ fn generate_proxy_impl_one(trait_ident: &Ident, method: &TraitItemMethod, cleane
             r
         }
     }
-}
-
-/// Convert the method name to "{trait_name}_{method_name}"
-/// This step is necessary because there could be mutiple interface
-/// traits with the same method names.
-fn trampoline_ident(trait_ident: &Ident, method: &Ident) -> Ident {
-    format_ident!("generated_proxy_domain_{}_{}", trait_ident, method)
 }
