@@ -5,7 +5,7 @@ use syn::{parse_quote, Item, ItemTrait, ItemFn, ItemMod, TraitItemMethod, Ident,
 use syn::punctuated::Punctuated;
 
 
-pub fn generate_proxy(input: &mut ItemTrait, module_path: &Vec<Ident>) -> Option<ItemMod> {
+pub fn generate_proxy(input: &mut ItemTrait, _module_path: &Vec<Ident>) -> Option<ItemMod> {
     if !has_attribute!(input, "interface") {
         return None;
     }
