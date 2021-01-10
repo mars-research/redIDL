@@ -19,16 +19,14 @@ macro_rules! has_attribute {
 #[macro_export]
 macro_rules! remove_attribute {
     ($item: ident, $attr: literal) => {
-        {
-            $item.attrs.retain(|attr| {
-                if let Ok(meta) = attr.parse_meta() {
-                    if meta.path().is_ident($attr) {
-                        return true;
-                    }
+        $item.attrs.retain(|attr| {
+            if let Ok(meta) = attr.parse_meta() {
+                if meta.path().is_ident($attr) {
+                    return false;
                 }
-                false
-            });
-        }
+            }
+            true
+        });
     };
 }
 

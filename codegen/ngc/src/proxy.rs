@@ -10,8 +10,10 @@ pub fn generate_proxy(input: &mut ItemTrait, module_path: &Vec<Ident>) -> Option
         return None;
     }
 
-    // Remove the attribute since it's no longer needed
+    // Remove the interface attribute and add a comment so we know it's an interface
     remove_attribute!(input, "interface");
+    input.attrs.push(parse_quote!{#[doc = "redIDL Auto Generated: interface trait. Generations are below"]});
+
 
     let trait_ident = &input.ident;
     let proxy_ident = format_ident!("{}Proxy", trait_ident);
