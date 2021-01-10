@@ -31,8 +31,23 @@ macro_rules! remove_attribute {
 }
 
 #[macro_export]
-macro_rules! get_proxy_mod {
-    () => {
-        format_ident!("generated_proxy")
+macro_rules! add_attribute {
+    ($item: ident, $attr: literal) => {
+        $item.attrs.push(
+            parse_quote! {
+                $attr
+            }
+        );
     };
 }
+
+#[macro_export]
+macro_rules! for_enums_add_attribute {
+    ($item: ident, $attr: literal, $($variant: path)*) => {
+        match $item {
+            $($variant(x) => crate::add_attribute!(x, $attr),)*
+            _ => {},
+        }
+    };
+}
+
