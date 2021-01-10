@@ -1,4 +1,8 @@
 mod proxy;
+mod utils;
+
+#[macro_use]
+extern crate lazy_static;
 
 use std::env;
 use std::error::Error;
