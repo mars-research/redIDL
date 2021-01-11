@@ -106,7 +106,7 @@ fn generate_trampolines(trait_ident: &Ident, methods: &[TraitItemMethod]) -> pro
                 #[cfg(feature = "trampoline")]
                 #[cfg(feature = "proxy")]
                 #[no_mangle]
-                extern fn #trampoline_ident(#domain_variable_ident: #trait_ident, #args) #return_ty {
+                extern fn #trampoline_ident(#domain_variable_ident: &alloc::boxed::Box<dyn #trait_ident>, #args) #return_ty {
                     #domain_variable_ident.#ident(#args)
                 }
     
@@ -115,11 +115,11 @@ fn generate_trampolines(trait_ident: &Ident, methods: &[TraitItemMethod]) -> pro
                 #[cfg(feature = "trampoline")]
                 #[cfg(feature = "proxy")]
                 #[no_mangle]
-                extern fn #trampoline_err_ident(#domain_variable_ident: #trait_ident, #args) #return_ty  {
+                extern fn #trampoline_err_ident(#domain_variable_ident: &alloc::boxed::Box<dyn #trait_ident>, #args) #return_ty  {
                     #[cfg(feature = "proxy-log-error")]
                     ::console::println!("proxy: {} aborted", stringify!(#ident));
     
-                    Err(unsafe{::usr::rpc::RpcError::panic()})
+                    Err(unsafe{crate::rpc::RpcError::panic()})
                 }
     
                 // A workaround to get the address of the error function
@@ -135,7 +135,7 @@ fn generate_trampolines(trait_ident: &Ident, methods: &[TraitItemMethod]) -> pro
                 #[cfg(feature = "trampoline")]
 
                 extern {
-                    fn #trampoline_tramp_ident(#domain_variable_ident: #trait_ident, #args) #return_ty;
+                    fn #trampoline_tramp_ident(#domain_variable_ident: &alloc::boxed::Box<dyn #trait_ident>, #args) #return_ty;
                 }
     
                 #[cfg(feature = "proxy")]
@@ -176,7 +176,7 @@ fn generate_proxy_impl_one(trait_ident: &Ident, method: &TraitItemMethod, cleane
     parse_quote! {
         fn #ident(#args) #return_ty {
             // move thread to next domain
-            let caller_domain = unsafe { sys_update_current_domain_id(self.domain_id) };
+            let caller_domain = unsafe { ::libsyscalls::syscalls::sys_update_current_domain_id(self.domain_id) };
     
             #[cfg(not(feature = "trampoline"))]
             let r = self.domain.#ident(#cleaned_args);
@@ -184,7 +184,7 @@ fn generate_proxy_impl_one(trait_ident: &Ident, method: &TraitItemMethod, cleane
             let r = unsafe { #trampoline_ident(&self.domain, #cleaned_args) };
     
             // move thread back
-            unsafe { sys_update_current_domain_id(caller_domain) };
+            unsafe { ::libsyscalls::syscalls::sys_update_current_domain_id(caller_domain) };
     
             r
         }
