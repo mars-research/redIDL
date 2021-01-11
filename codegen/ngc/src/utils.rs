@@ -34,8 +34,13 @@ macro_rules! remove_attribute {
 macro_rules! add_attribute {
     ($item: ident, $attr: literal) => {
         $item.attrs.push(
-            parse_quote! {
-                $attr
+            {
+                // let _att: syn::Attribute = parse_quote!{ asd };
+                // let stream = proc_macro::TokenStream::from_str("asd");
+                // let _att1: syn::Attribute = syn::parse_quote!{#$stream};
+                // let _att1: syn::Attribute = syn::parse(TokenStream::from_str($attr)).unwrap();
+                // syn::parse_str($attr).expect(concat!("Failed to parse attribute: {}", $attr))
+                panic!("")
             }
         );
     };

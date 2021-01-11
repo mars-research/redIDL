@@ -79,7 +79,7 @@ fn generate_recurse(items: &mut Vec<syn::Item>, module_path: &mut Vec<syn::Ident
             Item::Trait(tr) => {
                 // Attempt to generate proxy
                 if let Some(proxy) = crate::proxy::generate_proxy(tr, module_path) {
-                    generated_items.push(syn::Item::Mod(proxy))
+                    generated_items.extend(proxy);
                 }
             }
             _ => {},

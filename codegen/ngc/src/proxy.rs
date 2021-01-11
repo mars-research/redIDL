@@ -1,12 +1,11 @@
-use crate::{has_attribute, remove_attribute, get_proxy_mod};
+use crate::{has_attribute, remove_attribute};
 
-use paste::paste;
 use quote::{quote, format_ident};
-use syn::{parse_quote, Item, ItemTrait, ItemFn, ItemMod, TraitItemMethod, Ident, FnArg, Token, TraitItem};
+use syn::{parse_quote, Item, ItemTrait, ItemFn, TraitItemMethod, Ident, FnArg, Token, TraitItem};
 use syn::punctuated::Punctuated;
 
 
-pub fn generate_proxy(input: &mut ItemTrait, _module_path: &Vec<Ident>) -> Option<ItemMod> {
+pub fn generate_proxy(input: &mut ItemTrait, _module_path: &Vec<Ident>) -> Option<Vec<Item>> {
     if !has_attribute!(input, "interface") {
         return None;
     }
@@ -20,14 +19,18 @@ pub fn generate_proxy(input: &mut ItemTrait, _module_path: &Vec<Ident>) -> Optio
     let proxy_ident = format_ident!("{}Proxy", trait_ident);
 
     let proxy = quote! {
+        #[cfg(feature = "proxy")]
         pub struct #proxy_ident {
             domain: ::alloc::boxed::Box<dyn #trait_ident>,
             domain_id: u64,
         }
         
+        #[cfg(feature = "proxy")]
         unsafe impl Sync for #proxy_ident {}
+        #[cfg(feature = "proxy")]
         unsafe impl Send for #proxy_ident {}
         
+        #[cfg(feature = "proxy")]
         impl #proxy_ident {
             pub fn new(domain_id: u64, domain: ::alloc::boxed::Box<dyn #trait_ident>) -> Self {
                 Self {
@@ -68,20 +71,16 @@ pub fn generate_proxy(input: &mut ItemTrait, _module_path: &Vec<Ident>) -> Optio
 
     let proxy_impl = generate_proxy_impl(trait_ident, &proxy_ident, &trait_methods[..], &cleaned_trait_methods[..]);
     let trampolines = generate_trampolines(trait_ident, &cleaned_trait_methods[..]);
-    let proxy_mod = get_proxy_mod!();
 
-    let output = parse_quote! {
-        #[cfg(feature = "proxy")]
-        pub mod #proxy_mod {
-                    #proxy
-            
-                    #proxy_impl
-            
-                    #trampolines
-        } 
+    let output: syn::File = parse_quote! {
+        #proxy
+
+        #proxy_impl
+
+        #trampolines
     };
-    
-    Some(output)
+
+    Some(output.items)
 }
 
 
@@ -100,10 +99,12 @@ fn generate_trampolines(trait_ident: &Ident, methods: &[TraitItemMethod]) -> pro
             let trampoline_err_ident = format_ident!("{}_{}_err", trait_ident, ident);
             let trampoline_addr_ident = format_ident!("{}_{}_addr", trait_ident, ident);
             let trampoline_tramp_ident = format_ident!("{}_{}_tramp", trait_ident, ident);
-            
+
             quote! {
                 // Wrapper of the original function.
                 // The trampoline should call this after saving the continuation stack.
+                #[cfg(feature = "trampoline")]
+                #[cfg(feature = "proxy")]
                 #[no_mangle]
                 extern fn #trampoline_ident(#domain_variable_ident: #trait_ident, #args) #return_ty {
                     #domain_variable_ident.#ident(#args)
@@ -111,6 +112,8 @@ fn generate_trampolines(trait_ident: &Ident, methods: &[TraitItemMethod]) -> pro
     
                 // When the call panics, the continuation stack will jump this function.
                 // This function will return a `RpcError::panic` to the caller domain.
+                #[cfg(feature = "trampoline")]
+                #[cfg(feature = "proxy")]
                 #[no_mangle]
                 extern fn #trampoline_err_ident(#domain_variable_ident: #trait_ident, #args) #return_ty  {
                     #[cfg(feature = "proxy-log-error")]
@@ -120,16 +123,23 @@ fn generate_trampolines(trait_ident: &Ident, methods: &[TraitItemMethod]) -> pro
                 }
     
                 // A workaround to get the address of the error function
+                #[cfg(feature = "trampoline")]
+                #[cfg(feature = "proxy")]
                 #[no_mangle]
                 extern "C" fn #trampoline_addr_ident() -> u64 {
                     #trampoline_err_ident as u64
                 }
                 
                 // FFI to the trampoline.
+                #[cfg(feature = "proxy")]
+                #[cfg(feature = "trampoline")]
+
                 extern {
                     fn #trampoline_tramp_ident(#domain_variable_ident: #trait_ident, #args) #return_ty;
                 }
     
+                #[cfg(feature = "proxy")]
+                #[cfg(feature = "trampoline")]
                 ::unwind::trampoline!(#trampoline_ident);
             }
         });
@@ -148,6 +158,7 @@ fn generate_proxy_impl(trait_ident: &Ident, proxy_ident: &Ident, methods: &[Trai
     let proxy_impls = methods.iter().zip(cleaned_methods).map(|pair| generate_proxy_impl_one(trait_ident, pair.0, pair.1));
 
     parse_quote! {
+        #[cfg(feature = "proxy")]
         impl #trait_ident for #proxy_ident {
             #(#proxy_impls)*
         }

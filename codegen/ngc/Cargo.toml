@@ -10,5 +10,5 @@ edition = "2018"
 paste = "1.0" 
 proc-macro2 = { version = "1.0.24", features = ["nightly"] }
 clap = "2.33.3"
-syn = { version = "1.0.48", features = ["full", "extra-traits"]}
+syn = { version = "1.0.58", features = ["full", "extra-traits", "parsing", "proc-macro"]}
 quote = "1.0.7"
