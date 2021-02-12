@@ -1,6 +1,6 @@
 #[macro_export]
 macro_rules! has_attribute {
-    ($item: ident, $attr: literal) => {
+    ($item: ident, $attr: ident) => {
         {
             let mut ret = false;
             for attr in &$item.attrs {
@@ -18,7 +18,7 @@ macro_rules! has_attribute {
 
 #[macro_export]
 macro_rules! remove_attribute {
-    ($item: ident, $attr: literal) => {
+    ($item: ident, $attr: ident) => {
         $item.attrs.retain(|attr| {
             if let Ok(meta) = attr.parse_meta() {
                 if meta.path().is_ident($attr) {

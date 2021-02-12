@@ -4,14 +4,15 @@ use quote::{quote, format_ident};
 use syn::{parse_quote, Item, ItemTrait, ItemFn, TraitItemMethod, Ident, FnArg, Token, TraitItem};
 use syn::punctuated::Punctuated;
 
+const INTERFACE_ATTR: &'static str = "interface";
 
 pub fn generate_proxy(input: &mut ItemTrait, _module_path: &Vec<Ident>) -> Option<Vec<Item>> {
-    if !has_attribute!(input, "interface") {
+    if !has_attribute!(input, INTERFACE_ATTR) {
         return None;
     }
 
     // Remove the interface attribute and add a comment so we know it's an interface
-    remove_attribute!(input, "interface");
+    remove_attribute!(input, INTERFACE_ATTR);
     input.attrs.push(parse_quote!{#[doc = "redIDL Auto Generated: interface trait. Generations are below"]});
 
 
@@ -72,11 +73,16 @@ pub fn generate_proxy(input: &mut ItemTrait, _module_path: &Vec<Ident>) -> Optio
     let proxy_impl = generate_proxy_impl(trait_ident, &proxy_ident, &trait_methods[..], &cleaned_trait_methods[..]);
     let trampolines = generate_trampolines(trait_ident, &cleaned_trait_methods[..]);
 
+    let proxy_comment_begin_str = format!("----------{} Proxy generation begins-------------", trait_ident);
+    let tramp_comment_begin_str = format!("----------{} Trampoline generation begins-------------", trait_ident);
+
     let output: syn::File = parse_quote! {
+        #[doc = #proxy_comment_begin_str]
         #proxy
 
         #proxy_impl
 
+        #[doc = #tramp_comment_begin_str]
         #trampolines
     };
 
@@ -145,11 +151,7 @@ fn generate_trampolines(trait_ident: &Ident, methods: &[TraitItemMethod]) -> pro
         });
 
     quote! {
-        // Trampoline generation begins
-
         #(#trampolines)*
-
-        // Trampoline generation ends
     }
 }
 

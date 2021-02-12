@@ -1,5 +1,6 @@
 mod proxy;
 mod utils;
+mod domain_creation;
 
 use std::env;
 use std::error::Error;
@@ -78,8 +79,13 @@ fn generate_recurse(items: &mut Vec<syn::Item>, module_path: &mut Vec<syn::Ident
             }
             Item::Trait(tr) => {
                 // Attempt to generate proxy
-                if let Some(proxy) = crate::proxy::generate_proxy(tr, module_path) {
-                    generated_items.extend(proxy);
+                if let Some(generated) = crate::proxy::generate_proxy(tr, module_path) {
+                    generated_items.extend(generated);
+                }
+
+                // Attempt to generate domain creation
+                if let Some(generated) = crate::domain_creation::generate_domain_creation(tr, module_path) {
+                    generated_items.extend(generated);
                 }
             }
             _ => {},
@@ -115,9 +121,9 @@ fn remove_prelude(ast: &mut syn::File) {
         // #[prelude_import]
         // use core::prelude::v1::*;
         // ```
-        
+        const PRELUDE_IMPORT_ATTR: &'static str = "prelude_import";
         if let Item::Use(item) = item {
-            if has_attribute!(item, "prelude_import") {
+            if has_attribute!(item, PRELUDE_IMPORT_ATTR) {
                 return false;
             }
         }
