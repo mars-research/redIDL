@@ -1,9 +1,9 @@
 use std::{collections::HashMap, hash::Hash, ops::{Deref, DerefMut}, rc::Rc};
 
-use syn::{Ident, PathSegment};
+use syn::{Ident, PathSegment, Visibility};
 
 pub struct ModuleTree {
-    root: ModuleNode,
+    pub root: ModuleNode,
 }
 
 impl ModuleTree {
@@ -40,7 +40,7 @@ impl ModuleNode {
         // We might have an existing node already so we need to do a lookup.
         match self.children.get(ident).unwrap() {
             ModuleItem::Module(md) => md.clone(),
-            ModuleItem::Type(_) => unreachable!("Should be a module."),
+            _ => unreachable!("Should be a module."),
         }
     }
 
@@ -81,11 +81,21 @@ impl ModuleNodeInner {
         self.parent.take();
         self.children.clear();
     }
+
+    pub fn add_symbol(&mut self, ident: &Ident, visibility: &Visibility) {
+        // We assume that inherited mutability means private.
+        if *visibility == Visibility::Inherited {
+            self.children.insert(ident.clone(), ModuleItem::Type);
+        } else {
+            self.children.insert(ident.clone(), ModuleItem::PubType);
+        }
+    }
 }
 
 
 #[derive(Debug)]
-enum ModuleItem {
-    Type(Ident),
+pub enum ModuleItem {
+    Type,
+    PubType,
     Module(ModuleNode),
 }

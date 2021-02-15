@@ -1,7 +1,8 @@
 mod proxy;
 mod utils;
 mod domain_creation;
-mod type_resolution;
+mod type_resolver;
+mod dependency_resolver;
 mod module_tree;
 
 use std::env;
@@ -46,6 +47,11 @@ fn run(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     // Clean the file
     remove_prelude(&mut ast);
+
+    // Find all `RRef`ed types
+    let mut resolver = type_resolver::TypeSolver::new();
+    let types = resolver.resolve_types(&ast);
+    panic!("{:#?}", types);
     
     // Generate code in place
     generate(&mut ast);
