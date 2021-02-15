@@ -2,6 +2,7 @@ mod proxy;
 mod utils;
 mod domain_creation;
 mod type_resolution;
+mod module_tree;
 
 use std::env;
 use std::error::Error;
