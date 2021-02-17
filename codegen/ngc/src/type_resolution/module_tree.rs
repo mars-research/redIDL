@@ -1,7 +1,11 @@
 use std::{collections::HashMap, hash::Hash, ops::{Deref, DerefMut}, rc::Rc};
 
+use proc_macro2::Span;
+use quote::format_ident;
 use syn::{Ident, PathSegment, Visibility};
 
+/// A tree that contains all the symbols in the AST.
+/// Each node is a module
 pub struct ModuleTree {
     pub root: ModuleNode,
 }
@@ -9,7 +13,7 @@ pub struct ModuleTree {
 impl ModuleTree {
     pub fn new() -> Self {
         Self {
-            root: ModuleNode::new(None),
+            root: ModuleNode::new(&format_ident!("create"), None),
         }
     }
 
@@ -24,9 +28,9 @@ pub struct ModuleNode {
 }
 
 impl ModuleNode {
-    pub fn new(parent: Option<ModuleNode>) -> Self {
+    pub fn new(ident: &Ident, parent: Option<ModuleNode>) -> Self {
         Self {
-            inner: Rc::new(ModuleNodeInner::new(parent))
+            inner: Rc::new(ModuleNodeInner::new(ident, parent))
         }
     }
 
@@ -35,7 +39,7 @@ impl ModuleNode {
         // Attempt to insert a new node into children. Noop if there already exist one with the same
         // ident.
         let me = Some(self.clone());
-        self.children.insert(ident.clone(), ModuleItem::Module(Self::new(me)));
+        self.children.insert(ident.clone(), ModuleItem::Module(Self::new(&ident, me)));
 
         // We might have an existing node already so we need to do a lookup.
         match self.children.get(ident).unwrap() {
@@ -65,13 +69,23 @@ impl DerefMut for ModuleNode {
 
 #[derive(Debug)]
 pub struct ModuleNodeInner {
+    /// Caching the path to thid module so the user doesn't have to do the lookup manually.
+    path: Vec<Ident>,
+    /// The `super`, aka parent, module. 
     parent: Option<ModuleNode>,
+    /// 
     children: HashMap<Ident, ModuleItem>
 }
 
 impl ModuleNodeInner {
-    fn new(parent: Option<ModuleNode>) -> Self {
+    fn new(ident: &Ident, parent: Option<ModuleNode>) -> Self {
+        let mut path = vec!{};
+        if let Some(parent) = parent.as_ref() {
+            path = parent.path.clone();
+        }
+        path.push(ident.clone());
         Self {
+            path,
             parent,
             children: HashMap::new(),
         }
@@ -92,10 +106,18 @@ impl ModuleNodeInner {
     }
 }
 
+#[derive(Debug)]
+pub struct ModuleTypeItem {
+    // Fully qualified path
+    path: Vec<Ident>,
+    // Whether the type is public.
+    public: bool,
+}
 
 #[derive(Debug)]
 pub enum ModuleItem {
-    Type,
-    PubType,
+    /// Represent a non-module symbol in the module.
+    /// The tuple is `(fully-qualified-path, is-private)
+    Type(()),
     Module(ModuleNode),
 }

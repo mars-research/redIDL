@@ -2,7 +2,7 @@ use mem::replace;
 use syn::{File, FnArg, Item, ItemTrait, ItemUse, Path, PathSegment, ReturnType, TraitItem, TraitItemMethod, Type, UseTree, Visibility};
 use std::collections::{HashMap, HashSet};
 use std::mem;
-use crate::module_tree::*;
+use super::module_tree::*;
 
 pub struct DependencyResolver {
     /// A stack of maps a PathSegment to its fully qualified path

@@ -2,7 +2,8 @@ use mem::replace;
 use syn::{File, FnArg, Item, ItemTrait, Path, PathSegment, ReturnType, TraitItem, TraitItemMethod, Type};
 use std::collections::{HashMap, HashSet};
 use std::mem;
-use crate::module_tree::*;
+
+use super::module_tree::*;
 
 pub type PathSegments = Vec<PathSegment>;
 
@@ -10,15 +11,19 @@ pub type PathSegments = Vec<PathSegment>;
 pub struct TypeSolver {
     /// All the fully qualified path of all `RRef`ed types.
     type_list:  HashSet<PathSegments>,
-    /// A stack of maps a PathSegment to its fully qualified path
+    /// The root module node, i.e. the `crate` node.
+    root_module_node: ModuleNode,
+    /// The current module node that's used in recursive calls.
     module_node: ModuleNode,
 }
 
 impl TypeSolver {
-    pub fn new() -> Self {
+    pub fn new(module_tree: ModuleTree) -> Self {
+        let root_node = module_tree.root.clone();
         Self {
             type_list: HashSet::new(),
-            module_node: ModuleNode::new(None),
+            root_module_node: root_node,
+            module_node: root_node.clone(),
         }
     }
 
@@ -93,7 +98,7 @@ impl TypeSolver {
         }
     }
 
-    // Potential problem: B does `use A::Bar as Car`, Foo does `use A::Bar; use B::Car;`. These two
+    // Potential problem: B does `pub use A::Bar as Car`, Foo does `use A::Bar; use B::Car;`. These two
     // are the same type and will result a compilation error in typeid?
     fn resolve_types_in_path(&mut self, path: &Path) {
         // If the path starts with `::` or `crate`, we know that it's already fully qualified.
