@@ -73,5 +73,6 @@ crate -> inner_a
 
 Then, we use all information in the moduel and try connecting all pieces together until all the
 symbols have a terminal mapping. For example, `Foo` in `crate::inner_b` will get resolved from
-`crate::inner_a::Foo`.
+`crate::inner_a::Foo`. For usage like `renamed_a::Bar`, the user will need to follow the tree and
+figure out the fully-qualified path themselves.
 

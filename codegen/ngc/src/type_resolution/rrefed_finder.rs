@@ -8,7 +8,7 @@ use super::module_tree::*;
 pub type PathSegments = Vec<PathSegment>;
 
 
-pub struct TypeSolver {
+pub struct RRefedFinder {
     /// All the fully qualified path of all `RRef`ed types.
     type_list:  HashSet<PathSegments>,
     /// The root module node, i.e. the `crate` node.
@@ -17,81 +17,101 @@ pub struct TypeSolver {
     module_node: ModuleNode,
 }
 
-impl TypeSolver {
+impl RRefedFinder {
     pub fn new(module_tree: ModuleTree) -> Self {
         let root_node = module_tree.root.clone();
+        let current_node = root_node.clone();
         Self {
             type_list: HashSet::new(),
             root_module_node: root_node,
-            module_node: root_node.clone(),
+            module_node: current_node,
         }
     }
 
     /// Takes a AST and returns a list of fully-qualified paths of all `RRef`ed types.
-    pub fn resolve_types(&mut self, ast: &File) -> HashSet<PathSegments> {
+    pub fn find_rrefed(&mut self, ast: &File) -> HashSet<PathSegments> {
         self.type_list.clear();
         self.module_node.clear();
-        self.resolve_types_recursive(&ast.items);
+        self.find_rrefed_recursive(&ast.items);
         self.module_node.clear();
         std::mem::replace(&mut self.type_list, HashSet::new())
     }
 
-    fn resolve_types_recursive(&mut self, items: &Vec<syn::Item>) {
+    fn find_rrefed_recursive(&mut self, items: &Vec<syn::Item>) {
         let mut generated_items = Vec::<syn::Item>::new();
         for item in items.iter() {
             match item {
                 Item::Mod(md) => {
                     if let Some((_, items)) = &md.content {
-                        self.module_node = self.module_node.push(&md.ident);
-                        self.resolve_types_recursive(items);
+                        self.module_node = match &self.module_node.children[&md.ident].item_type {
+                            ModuleItemType::Module(md) => md.clone(),
+                            ModuleItemType::Symbol(_) => unreachable!("Expecting a module, not a symbol.")
+                        };
+                        self.find_rrefed_recursive(items);
                         self.module_node = self.module_node.parent().unwrap();
                     }
                 }
                 Item::Trait(tr) => {
-                    self.resolve_types_in_trait(tr);
+                    self.find_rrefed_in_trait(tr);
                 }
-                _ => {},
+                
+                Item::Const(_) => {}
+                Item::Enum(_) => {}
+                Item::ExternCrate(_) => {}
+                Item::Fn(_) => {}
+                Item::ForeignMod(_) => {}
+                Item::Impl(_) => {}
+                Item::Macro(_) => {}
+                Item::Macro2(_) => {}
+                Item::Static(_) => {}
+                Item::Struct(_) => {}
+                Item::TraitAlias(_) => {}
+                Item::Type(_) => {}
+                Item::Union(_) => {}
+                Item::Use(_) => {}
+                Item::Verbatim(_) => {}
+                Item::__Nonexhaustive => {}
             }
         }
     }
 
-    fn resolve_types_in_trait(&mut self, tr: &ItemTrait) {
+    fn find_rrefed_in_trait(&mut self, tr: &ItemTrait) {
         for item in &tr.items {
             if let TraitItem::Method(method) = item {
-                self.resolve_types_in_method(&method);
+                self.find_rrefed_in_method(&method);
             }
         }
     }
 
-    fn resolve_types_in_method(&mut self, method: &TraitItemMethod) {
+    fn find_rrefed_in_method(&mut self, method: &TraitItemMethod) {
         for arg in &method.sig.inputs {
-            self.resolve_types_in_fnarg(&arg);
+            self.find_rrefed_in_fnarg(&arg);
         }
     }
 
-    fn resolve_types_in_fnarg(&mut self, arg: &FnArg) {
+    fn find_rrefed_in_fnarg(&mut self, arg: &FnArg) {
         if let FnArg::Typed(ty) = arg {
-            self.resolve_types_in_type(&ty.ty);
+            self.find_rrefed_in_type(&ty.ty);
         } 
     }
 
-    fn resolve_types_in_returntype(&mut self, rtn: &ReturnType) {
+    fn find_rrefed_in_returntype(&mut self, rtn: &ReturnType) {
         if let ReturnType::Type(_, ty) = rtn {
-            self.resolve_types_in_type(ty);
+            self.find_rrefed_in_type(ty);
         }
     }
 
-    fn resolve_types_in_type(&mut self, ty: &Type) {
+    fn find_rrefed_in_type(&mut self, ty: &Type) {
         match ty {
             Type::Array(ty) => {
-                self.resolve_types_in_type(&ty.elem);
+                self.find_rrefed_in_type(&ty.elem);
             },
             Type::Path(ty) => {
-                self.resolve_types_in_path(&ty.path);
+                self.find_rrefed_in_path(&ty.path);
             },
             Type::Tuple(ty) => {
                 for elem in &ty.elems {
-                    self.resolve_types_in_type(&elem);
+                    self.find_rrefed_in_type(&elem);
                 }
             },
             _ => unimplemented!()
@@ -100,7 +120,7 @@ impl TypeSolver {
 
     // Potential problem: B does `pub use A::Bar as Car`, Foo does `use A::Bar; use B::Car;`. These two
     // are the same type and will result a compilation error in typeid?
-    fn resolve_types_in_path(&mut self, path: &Path) {
+    fn find_rrefed_in_path(&mut self, path: &Path) {
         // If the path starts with `::` or `crate`, we know that it's already fully qualified.
         // No further is required. We can just put it into the list.
         let mut path_is_fully_qualified = path.leading_colon.is_some();

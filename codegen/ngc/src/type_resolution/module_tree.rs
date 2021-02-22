@@ -3,9 +3,11 @@ use std::{collections::HashMap, hash::Hash, ops::{Deref, DerefMut}, rc::Rc};
 use proc_macro2::Span;
 use quote::format_ident;
 use syn::{Ident, PathSegment, Visibility};
+use super::utils::is_public;
 
 /// A tree that contains all the symbols in the AST.
 /// Each node is a module
+#[derive(Debug)]
 pub struct ModuleTree {
     pub root: ModuleNode,
 }
@@ -35,15 +37,20 @@ impl ModuleNode {
     }
 
     /// Create a new child module and returns a reference to it. 
-    pub fn push(&mut self, ident: &Ident) -> Self {
+    pub fn push(&mut self, ident: &Ident, vis: &Visibility) -> Self {
         // Attempt to insert a new node into children. Noop if there already exist one with the same
         // ident.
         let me = Some(self.clone());
-        self.children.insert(ident.clone(), ModuleItem::Module(Self::new(&ident, me)));
+        let module_item = ModuleItem {
+            public: is_public(vis),
+            terminal: true,
+            item_type: ModuleItemType::Module(Self::new(&ident, me))
+        };
+        self.children.insert(ident.clone(), module_item);
 
         // We might have an existing node already so we need to do a lookup.
-        match self.children.get(ident).unwrap() {
-            ModuleItem::Module(md) => md.clone(),
+        match &self.children.get(ident).unwrap().item_type {
+            ModuleItemType::Module(md) => md.clone(),
             _ => unreachable!("Should be a module."),
         }
     }
@@ -70,11 +77,11 @@ impl DerefMut for ModuleNode {
 #[derive(Debug)]
 pub struct ModuleNodeInner {
     /// Caching the path to thid module so the user doesn't have to do the lookup manually.
-    path: Vec<Ident>,
+    pub path: Vec<Ident>,
     /// The `super`, aka parent, module. 
-    parent: Option<ModuleNode>,
-    /// 
-    children: HashMap<Ident, ModuleItem>
+    pub parent: Option<ModuleNode>,
+    /// All items in this module, including symbols and modules.
+    pub children: HashMap<Ident, ModuleItem>
 }
 
 impl ModuleNodeInner {
@@ -96,28 +103,26 @@ impl ModuleNodeInner {
         self.children.clear();
     }
 
-    pub fn add_symbol(&mut self, ident: &Ident, visibility: &Visibility) {
-        // We assume that inherited mutability means private.
-        if *visibility == Visibility::Inherited {
-            self.children.insert(ident.clone(), ModuleItem::Type);
-        } else {
-            self.children.insert(ident.clone(), ModuleItem::PubType);
-        }
+    pub fn insert(&mut self, ident: &Ident, module_item: ModuleItem) -> Option<ModuleItem> {
+        self.children.insert(ident.clone(), module_item)
     }
 }
 
 #[derive(Debug)]
-pub struct ModuleTypeItem {
-    // Fully qualified path
-    path: Vec<Ident>,
-    // Whether the type is public.
-    public: bool,
+pub struct ModuleItem {
+    /// Whether the type is public.
+    pub public: bool,
+    /// If true, this node is mapped to its definition and no further resolution is needed.
+    pub terminal: bool,
+    /// Fully qualified path
+    pub item_type: ModuleItemType,
 }
 
 #[derive(Debug)]
-pub enum ModuleItem {
-    /// Represent a non-module symbol in the module.
-    /// The tuple is `(fully-qualified-path, is-private)
-    Type(()),
+pub enum ModuleItemType {
+    /// Represent a non-module symbol in the module. Contains the most-qualified path that we know
+    /// so far.
+    Symbol(Vec<Ident>),
+    /// A child module.
     Module(ModuleNode),
 }

@@ -48,9 +48,9 @@ fn run(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     remove_prelude(&mut ast);
 
     // Find all `RRef`ed types
-    let mut resolver = type_resolution::type_resolver::TypeSolver::new();
-    let types = resolver.resolve_types(&ast);
-    panic!("{:#?}", types);
+    // let mut resolver = type_resolution::type_resolver::TypeSolver::new();
+    // let types = resolver.resolve_types(&ast);
+    // panic!("{:#?}", types);
     
     // Generate code in place
     generate(&mut ast);
