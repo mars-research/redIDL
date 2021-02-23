@@ -59,7 +59,7 @@ crate -> inner_a
 
 // Module `inner_a` mapping
 {
-    <pub Foo, Foo, terminal>,
+    <pub Foo, crate::inner_a::Foo, terminal>,
     <pub Bar, crate::Foo>,
 }
 

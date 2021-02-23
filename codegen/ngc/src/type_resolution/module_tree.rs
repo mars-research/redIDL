@@ -1,4 +1,4 @@
-use std::{collections::HashMap, hash::Hash, ops::{Deref, DerefMut}, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, hash::Hash, ops::{Deref, DerefMut}, rc::Rc};
 
 use proc_macro2::Span;
 use quote::format_ident;
@@ -26,13 +26,13 @@ impl ModuleTree {
 
 #[derive(Debug, Clone)]
 pub struct ModuleNode {
-    inner: Rc<ModuleNodeInner>,
+    inner: Rc<RefCell<ModuleNodeInner>>,
 }
 
 impl ModuleNode {
     pub fn new(ident: &Ident, parent: Option<ModuleNode>) -> Self {
         Self {
-            inner: Rc::new(ModuleNodeInner::new(ident, parent))
+            inner: Rc::new(RefCell::new(ModuleNodeInner::new(ident, parent)))
         }
     }
 
@@ -64,13 +64,13 @@ impl Deref for ModuleNode {
     type Target = ModuleNodeInner;
 
     fn deref(&self) -> &Self::Target {
-        &self.inner
+        &self.inner.borrow()
     }
 }
 
 impl DerefMut for ModuleNode {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        Rc::get_mut(&mut self.inner).unwrap()
+        self.inner.get_mut()
     }
 }
 
@@ -108,7 +108,9 @@ impl ModuleNodeInner {
     }
 }
 
-#[derive(Debug)]
+// TBH, I think `public` and `terminal` should be members of `item_type`.
+/// Represent an item in the module tree. It could be a module or a symbol.
+#[derive(Debug, Clone)]
 pub struct ModuleItem {
     /// Whether the type is public.
     pub public: bool,
@@ -118,11 +120,47 @@ pub struct ModuleItem {
     pub item_type: ModuleItemType,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ModuleItemType {
     /// Represent a non-module symbol in the module. Contains the most-qualified path that we know
     /// so far.
-    Symbol(Vec<Ident>),
+    Symbol(SymbolNode),
     /// A child module.
     Module(ModuleNode),
+}
+
+#[derive(Debug)]
+pub struct SymbolNodeInner {
+    pub leading_colon: bool,
+    pub path: Vec<Ident>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SymbolNode {
+    inner: Rc<RefCell<SymbolNodeInner>>,
+}
+
+impl SymbolNode {
+    pub fn new(leading_colon: bool, path: Vec<Ident>) -> Self {
+        Self {
+            inner: Rc::new(RefCell::new(SymbolNodeInner {
+                leading_colon,
+                path,
+            }))
+        }
+    }
+}
+
+impl Deref for SymbolNode {
+    type Target = SymbolNodeInner;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner.borrow()
+    }
+}
+
+impl DerefMut for SymbolNode {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.inner.get_mut()
+    }
 }
