@@ -91,7 +91,7 @@ impl SymbolTreeNode {
     }
 
     pub fn parent(&self) -> Option<Self> {
-        self.parent().clone()
+        RefCell::borrow(&self.inner).parent.clone()
     }
 
     pub fn same(&self, other: &Self) -> bool {
@@ -130,7 +130,7 @@ pub struct ModuleNode {
 }
 
 impl ModuleNode {
-    fn new(public: bool, module: SymbolTreeNode) -> Self {
+    pub fn new(public: bool, module: SymbolTreeNode) -> Self {
         Self {
             inner: Rc::new(RefCell::new(ModuleNodeInner::new(public, module)))
         }
