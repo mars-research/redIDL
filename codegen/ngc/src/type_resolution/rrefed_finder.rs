@@ -3,7 +3,7 @@ use syn::{File, FnArg, Item, ItemTrait, Path, PathSegment, ReturnType, TraitItem
 use std::collections::{HashMap, HashSet};
 use std::mem;
 
-use super::module_tree::*;
+use super::symbol_tree::*;
 
 pub type PathSegments = Vec<PathSegment>;
 
@@ -12,28 +12,27 @@ pub struct RRefedFinder {
     /// All the fully qualified path of all `RRef`ed types.
     type_list:  HashSet<PathSegments>,
     /// The root module node, i.e. the `crate` node.
-    root_module_node: ModuleNode,
+    symbol_tree: SymbolTree,
     /// The current module node that's used in recursive calls.
-    module_node: ModuleNode,
+    symbol_tree_node: SymbolTreeNode,
 }
 
 impl RRefedFinder {
-    pub fn new(module_tree: ModuleTree) -> Self {
-        let root_node = module_tree.root.clone();
-        let current_node = root_node.clone();
+    pub fn new(symbol_tree: SymbolTree) -> Self {
+        let symbol_tree_node = symbol_tree.root_symbol_tree_node();
         Self {
             type_list: HashSet::new(),
-            root_module_node: root_node,
-            module_node: current_node,
+            symbol_tree: symbol_tree,
+            symbol_tree_node,
         }
     }
 
     /// Takes a AST and returns a list of fully-qualified paths of all `RRef`ed types.
     pub fn find_rrefed(&mut self, ast: &File) -> HashSet<PathSegments> {
         self.type_list.clear();
-        self.module_node.clear();
+        self.symbol_tree_node.borrow_mut().clear();
         self.find_rrefed_recursive(&ast.items);
-        self.module_node.clear();
+        self.symbol_tree_node.borrow_mut().clear();
         std::mem::replace(&mut self.type_list, HashSet::new())
     }
 
@@ -43,12 +42,13 @@ impl RRefedFinder {
             match item {
                 Item::Mod(md) => {
                     if let Some((_, items)) = &md.content {
-                        self.module_node = match &self.module_node.children[&md.ident].item_type {
-                            ModuleItemType::Module(md) => md.clone(),
-                            ModuleItemType::Symbol(_) => unreachable!("Expecting a module, not a symbol.")
+                        let next_frame = match &self.symbol_tree_node.borrow().children[&md.ident] {
+                            ModuleItem::Module(md) => md.borrow().module.clone(),
+                            ModuleItem::Type(_) => unreachable!("Expecting a module, not a symbol.")
                         };
+                        self.symbol_tree_node = next_frame;
                         self.find_rrefed_recursive(items);
-                        self.module_node = self.module_node.parent().unwrap();
+                        self.symbol_tree_node = self.symbol_tree_node.parent().unwrap();
                     }
                 }
                 Item::Trait(tr) => {

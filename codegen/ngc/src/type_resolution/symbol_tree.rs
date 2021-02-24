@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, hash::Hash, ops::{Deref, DerefMut}, rc::Rc};
+use std::{borrow::Borrow, cell::{Ref, RefCell, RefMut}, collections::HashMap, hash::Hash, ops::{Deref, DerefMut}, rc::Rc};
 
 use proc_macro2::Span;
 use quote::format_ident;
@@ -21,8 +21,8 @@ impl SymbolTree {
 
     /// Returns the root of the tree in as a `SymbolTreeNode`.
     pub fn root_symbol_tree_node(&self) -> SymbolTreeNode { 
-        match self.root {
-            ModuleItem::Module(md) => md.module,
+        match &self.root {
+            ModuleItem::Module(md) => md.borrow().module.clone(),
             ModuleItem::Type(_) => unreachable!()
         }
     }
@@ -42,7 +42,7 @@ impl SymbolTreeNodeInner {
     fn new(ident: &Ident, parent: Option<SymbolTreeNode>) -> Self {
         let mut path = vec!{};
         if let Some(parent) = parent.as_ref() {
-            path = parent.path.clone();
+            path = parent.borrow().path.clone();
         }
         path.push(ident.clone());
         Self {
@@ -67,20 +67,6 @@ pub struct SymbolTreeNode {
     pub inner: Rc<RefCell<SymbolTreeNodeInner>>,
 }
 
-impl Deref for SymbolTreeNode {
-    type Target = SymbolTreeNodeInner;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner.borrow()
-    }
-}
-
-impl DerefMut for SymbolTreeNode {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.inner.get_mut()
-    }
-}
-
 impl SymbolTreeNode {
     pub fn new(ident: &Ident, parent: Option<SymbolTreeNode>) -> Self {
         Self {
@@ -95,21 +81,29 @@ impl SymbolTreeNode {
         let me = Some(self.clone());
         let new_module = Self::new(ident, me);
         let new_module = ModuleItem::Module(ModuleNode::new(is_public(vis), new_module));
-        self.children.insert(ident.clone(), new_module);
+        self.borrow_mut().children.insert(ident.clone(), new_module);
 
         // We might have an existing node already so we need to do a lookup.
-        match &self.children.get(ident).unwrap() {
-            ModuleItem::Module(md) => md.module.clone(),
+        match &RefCell::borrow(&self.inner).children.get(ident).unwrap() {
+            ModuleItem::Module(md) => md.borrow().module.clone(),
             _ => unreachable!("Should be a module."),
         }
     }
 
     pub fn parent(&self) -> Option<Self> {
-        self.parent.clone()
+        self.parent().clone()
     }
 
     pub fn same(&self, other: &Self) -> bool {
         Rc::ptr_eq(&self.inner, &other.inner)
+    }
+
+    pub fn borrow(&self) -> Ref<SymbolTreeNodeInner> {
+        RefCell::borrow(&self.inner)
+    }
+
+    pub fn borrow_mut(&self) -> RefMut<SymbolTreeNodeInner> {
+        RefCell::borrow_mut(&self.inner)
     }
 }
 
@@ -135,25 +129,19 @@ pub struct ModuleNode {
     inner: Rc<RefCell<ModuleNodeInner>>,
 }
 
-impl Deref for ModuleNode {
-    type Target = ModuleNodeInner;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner.borrow()
-    }
-}
-
-impl DerefMut for ModuleNode {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.inner.get_mut()
-    }
-}
-
 impl ModuleNode {
     fn new(public: bool, module: SymbolTreeNode) -> Self {
         Self {
             inner: Rc::new(RefCell::new(ModuleNodeInner::new(public, module)))
         }
+    }
+
+    pub fn borrow(&self) -> Ref<ModuleNodeInner> {
+        RefCell::borrow(&self.inner)
+    }
+
+    pub fn borrow_mut(&self) -> RefMut<ModuleNodeInner> {
+        RefCell::borrow_mut(&self.inner)
     }
 }
 
@@ -194,18 +182,12 @@ impl TypeNode {
             }))
         }
     }
-}
 
-impl Deref for TypeNode {
-    type Target = TypeNodeInner;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner.borrow()
+    pub fn borrow(&self) -> Ref<TypeNodeInner> {
+        RefCell::borrow(&self.inner)
     }
-}
 
-impl DerefMut for TypeNode {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.inner.get_mut()
+    pub fn borrow_mut(&self) -> RefMut<TypeNodeInner> {
+        RefCell::borrow_mut(&self.inner)
     }
 }

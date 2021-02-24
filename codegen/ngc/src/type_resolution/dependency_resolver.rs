@@ -15,42 +15,45 @@ pub struct DependencyResolver {
 impl DependencyResolver {
     pub fn new() -> Self {
         let symbol_tree = SymbolTree::new();
+        let root = symbol_tree.root_symbol_tree_node();
         Self {
             symbol_tree,
-            symbol_tree_node: symbol_tree.root_symbol_tree_node(),
+            symbol_tree_node: root,
         }
     }
 
     /// Takes a AST and returns a list of fully-qualified paths of all `RRef`ed types.
-    pub fn resolve_dependencies(self, ast: &File) -> SymbolTree {
+    pub fn resolve_dependencies(mut self, ast: &File) -> SymbolTree {
         self.resolve_dependencies_recursive(&ast.items);
-        self.resolve_relative_paths_recursive_for_symbol_tree_node(self.symbol_tree_node);
+        self.resolve_relative_paths_recursive_for_symbol_tree_node(self.symbol_tree_node.clone());
         self.symbol_tree
     }
 
     /// Returns the resolved/terminal path of `module_item`.
-    fn resolve_relative_paths_recursive_for_module_item(&self, module_item: ModuleItem) {
-        match module_item {
-            ModuleItem::Type(item) => {
+    fn resolve_relative_paths_recursive_for_module_item(&mut self, module_item: ModuleItem) {
+        match module_item.clone() {
+            ModuleItem::Type(mut item) => {
                 // No further resolution is required.
-                if item.terminal {
+                if item.borrow().terminal {
                     return;
                 }
 
                 // Walk the relative path and try resolving the path.
-                let mut current_node = match item.leading_colon {
+                let mut current_node = match item.borrow().leading_colon {
                     true => self.symbol_tree.root.clone(),
                     false => module_item.clone()
                 };
-                for path_segment in &item.path {
+                for path_segment in &item.borrow().path {
                     match current_node {
-                        ModuleItem::Type(_) => panic!("Resolving {:?} for {:?}. Node {:?} is a symbol and cannot have child.", path_segment, item.path, current_node),
+                        ModuleItem::Type(_) => panic!("Resolving {:?} for {:?}. Node {:?} is a symbol and cannot have child.", path_segment, item.borrow().path, current_node),
                         ModuleItem::Module(md) => {
-                            let next_node = md.module.children.get(path_segment);
-                            let next_node = next_node.expect(&format!("ident {:?} not found in {:?} when resolving {:?}", path_segment, md.module.path, item.path));
+                            let md_ref = md.borrow();
+                            let md_ref_ref = md_ref.module.borrow();
+                            let next_node = md_ref_ref.children.get(path_segment);
+                            let next_node = next_node.expect(&format!("ident {:?} not found in {:?} when resolving {:?}", path_segment, md.borrow().module.borrow().path, item.borrow().path));
                             match next_node {
-                                ModuleItem::Type(ty) => assert!(ty.public, "Node is not public. {:?}", next_node),
-                                ModuleItem::Module(md) => assert!(md.public, "Node is not public. {:?}", next_node),
+                                ModuleItem::Type(ty) => assert!(ty.borrow().public, "Node is not public. {:?}", next_node),
+                                ModuleItem::Module(md) => assert!(md.borrow().public, "Node is not public. {:?}", next_node),
                             }
                             current_node = next_node.clone();
                         }
@@ -61,32 +64,33 @@ impl DependencyResolver {
                 // terminal.
                 // If the node is a module, we can treat it as terminal. It's up to the user to
                 // resolve their types that in the module. 
-                match current_node {
+                match current_node.clone() {
                     ModuleItem::Module(_) => { /* noop */ }
                     ModuleItem::Type(ty) => {
-                        if !ty.terminal {
-                            self.resolve_relative_paths_recursive_for_module_item(current_node);
+                        if !ty.borrow().terminal {
+                            self.resolve_relative_paths_recursive_for_module_item(current_node.clone());
                         }
-                        assert!(ty.terminal);
+                        assert!(ty.borrow().terminal);
                     }
                 }
 
                 // Populate the absolute path to us.
-                item.terminal = true;
-                match current_node {
-                    ModuleItem::Type(sym) => item.path.clone_from_slice(&sym.path[..]),
-                    ModuleItem::Module(md) => item.path.clone_from_slice(&md.module.path[..]),
+                item.borrow_mut().terminal = true;
+                match current_node.clone() {
+                    ModuleItem::Type(sym) => item.borrow_mut().path.clone_from_slice(&sym.borrow().path[..]),
+                    ModuleItem::Module(md) => item.borrow_mut().path.clone_from_slice(&md.borrow().module.borrow().path[..]),
                 }
                
             }
             ModuleItem::Module(item) => {
-                assert!(item.public);
+                assert!(item.borrow().public);
                 // Go to the children frame and do recursive call.
                 let old_frame = self.symbol_tree_node.clone();
-                self.symbol_tree_node = item.module;
+                self.symbol_tree_node = item.borrow().module.clone();
                 self.resolve_relative_paths_recursive_for_symbol_tree_node(self.symbol_tree_node.clone());
                 // Pop the frame and return back to the old frame.
-                self.symbol_tree_node = self.symbol_tree_node.parent.unwrap().clone();
+                let parent_frame = self.symbol_tree_node.borrow().parent.clone().unwrap();
+                self.symbol_tree_node = parent_frame;
                 // Sanity check that we are actually restoring to the correct frame.
                 assert!(old_frame.same(&self.symbol_tree_node))
             }
@@ -95,9 +99,9 @@ impl DependencyResolver {
 
     /// Resolve all relative paths generated `resolve_dependencies_recursive` by into terminal
     /// paths. 
-    fn resolve_relative_paths_recursive_for_symbol_tree_node(&self, symbol_tree_node: SymbolTreeNode) {
-        for (_, child) in symbol_tree_node.borrow_mut().children {
-            self.resolve_relative_paths_recursive_for_module_item(child);
+    fn resolve_relative_paths_recursive_for_symbol_tree_node(&mut self, symbol_tree_node: SymbolTreeNode) {
+        for (_, child) in &symbol_tree_node.borrow().children {
+            self.resolve_relative_paths_recursive_for_module_item(child.clone());
         }
     }
 
@@ -174,18 +178,18 @@ impl DependencyResolver {
 
         // Add the symbol to the module.
         let symbol = TypeNode::new(is_public(vis), terminal, leading_colon, path);
-        self.symbol_tree_node.insert(ident, ModuleItem::Type(symbol)).expect("type node shouldn't apprear more than once");
+        self.symbol_tree_node.borrow_mut().insert(ident, ModuleItem::Type(symbol)).expect("type node shouldn't apprear more than once");
     }
 
     /// Add a symbol that's defined in the current scope. The symbol is terminal.
     fn add_definition_symbol(&mut self, ident: &Ident, vis: &Visibility) {
         // Construct fully qualified path.
-        let mut path = self.symbol_tree_node.path.clone();
+        let mut path = self.symbol_tree_node.borrow().path.clone();
         path.push(ident.clone());
 
         // Add symbol.
         let symbol = TypeNode::new(is_public(vis), true, true, path);
-        self.symbol_tree_node.insert(ident, ModuleItem::Type(symbol)).expect("type node shouldn't apprear more than once");
+        self.symbol_tree_node.borrow_mut().insert(ident, ModuleItem::Type(symbol)).expect("type node shouldn't apprear more than once");
     }
     
     // /// Add a symbol to the corrent scope.

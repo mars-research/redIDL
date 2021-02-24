@@ -1,3 +1,5 @@
+#![feature(generic_associated_types)]
+
 mod proxy;
 mod utils;
 mod domain_creation;
