@@ -9,18 +9,22 @@ use super::utils::is_public;
 /// Each node is a module
 #[derive(Debug)]
 pub struct SymbolTree {
-    pub root: SymbolTreeNode,
+    pub root: ModuleItem,
 }
 
 impl SymbolTree {
     pub fn new() -> Self {
         Self {
-            root: SymbolTreeNode::new(&format_ident!("crate"), None),
+            root: ModuleItem::Module(ModuleNode::new(true, SymbolTreeNode::new(&format_ident!("crate"), None))),
         }
     }
 
-    pub fn clear(&mut self) {
-        self.root.clear();
+    /// Returns the root of the tree in as a `SymbolTreeNode`.
+    pub fn root_symbol_tree_node(&self) -> SymbolTreeNode { 
+        match self.root {
+            ModuleItem::Module(md) => md.module,
+            ModuleItem::Type(_) => unreachable!()
+        }
     }
 }
 
@@ -60,7 +64,7 @@ impl SymbolTreeNodeInner {
 
 #[derive(Debug, Clone)]
 pub struct SymbolTreeNode {
-    inner: Rc<RefCell<SymbolTreeNodeInner>>,
+    pub inner: Rc<RefCell<SymbolTreeNodeInner>>,
 }
 
 impl Deref for SymbolTreeNode {
@@ -85,7 +89,7 @@ impl SymbolTreeNode {
     }
 
     /// Create a new child module and returns a reference to it. 
-    pub fn add_module(&mut self, ident: &Ident, vis: &Visibility) -> ModuleNode {
+    pub fn add_module(&mut self, ident: &Ident, vis: &Visibility) -> SymbolTreeNode {
         // Attempt to insert a new node into children. Noop if there already exist one with the same
         // ident.
         let me = Some(self.clone());
@@ -95,7 +99,7 @@ impl SymbolTreeNode {
 
         // We might have an existing node already so we need to do a lookup.
         match &self.children.get(ident).unwrap() {
-            ModuleItem::Module(md) => md.clone(),
+            ModuleItem::Module(md) => md.module.clone(),
             _ => unreachable!("Should be a module."),
         }
     }
@@ -103,8 +107,28 @@ impl SymbolTreeNode {
     pub fn parent(&self) -> Option<Self> {
         self.parent.clone()
     }
+
+    pub fn same(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.inner, &other.inner)
+    }
 }
 
+#[derive(Debug)]
+pub struct ModuleNodeInner {
+    /// Whether the module is public.
+    pub public: bool,
+    /// The module itself.
+    pub module: SymbolTreeNode,
+}
+
+impl ModuleNodeInner {
+    fn new(public: bool, module: SymbolTreeNode) -> Self {
+        Self {
+            public,
+            module,
+        }
+    }   
+}
 
 #[derive(Debug, Clone)]
 pub struct ModuleNode {
@@ -131,24 +155,6 @@ impl ModuleNode {
             inner: Rc::new(RefCell::new(ModuleNodeInner::new(public, module)))
         }
     }
-}
-
-
-#[derive(Debug)]
-pub struct ModuleNodeInner {
-    /// Whether the module is public.
-    pub public: bool,
-    /// The module itself.
-    pub module: SymbolTreeNode,
-}
-
-impl ModuleNodeInner {
-    fn new(public: bool, module: SymbolTreeNode) -> Self {
-        Self {
-            public,
-            module,
-        }
-    }   
 }
 
 #[derive(Debug, Clone)]
