@@ -31,7 +31,7 @@ impl RRefedFinder {
     /// Takes a AST and returns a list of fully-qualified paths of all `RRef`ed types.
     pub fn find_rrefed(mut self, ast: &File) -> HashSet<Type> {
         self.find_rrefed_recursive(&ast.items);
-        std::mem::replace(&mut self.type_list, HashSet::new())
+        self.type_list
     }
 
     fn find_rrefed_recursive(&mut self, items: &Vec<syn::Item>) {
@@ -41,10 +41,14 @@ impl RRefedFinder {
                 Item::Mod(md) => {
                     println!("Resolving module {:?}", md.ident);
                     if let Some((_, items)) = &md.content {
-                        let next_frame = match &self.symbol_tree_node.borrow().children[&md.ident] {
+                        let current_node = self.symbol_tree_node.borrow();
+                        let next_frame = current_node.children.get(&md.ident);
+                        let next_frame = next_frame.expect(&format!("Module {:?} not found in {:#?}", md.ident, current_node));
+                        let next_frame = match next_frame {
                             ModuleItem::Module(md) => md.borrow().module.clone(),
                             ModuleItem::Type(_) => unreachable!("Expecting a module, not a symbol.")
                         };
+                        drop(current_node);
                         self.symbol_tree_node = next_frame;
                         self.find_rrefed_recursive(items);
                         self.symbol_tree_node = self.symbol_tree_node.parent().unwrap();
@@ -126,7 +130,6 @@ impl RRefedFinder {
                 self.type_list.insert(resolved_type.clone());
                 resolved_type
             },
-            
             Type::BareFn(x) => unimplemented!("{:#?}", x),
             Type::Group(x) => unimplemented!("{:#?}", x),
             Type::ImplTrait(x) => unimplemented!("{:#?}", x),
@@ -135,9 +138,26 @@ impl RRefedFinder {
             Type::Never(x) => unimplemented!("{:#?}", x),
             Type::Paren(x) => unimplemented!("{:#?}", x),
             Type::Ptr(x) => unimplemented!("{:#?}", x),
-            Type::Reference(x) => unimplemented!("{:#?}", x),
-            Type::Slice(x) => unimplemented!("{:#?}", x),
-            Type::TraitObject(x) => unimplemented!("{:#?}", x),
+            Type::Reference(reference) => self.find_rrefed_in_type(&reference.elem),
+            Type::Slice(slice) => {
+                let mut resolved_type = slice.clone();
+                *resolved_type.elem = self.find_rrefed_in_type(&resolved_type.elem);
+                let resolved_trait = Type::Slice(resolved_type);
+                resolved_trait
+            }
+            Type::TraitObject(tr) => {
+                let mut resolved_type = tr.clone();
+                for bound in resolved_type.bounds.iter_mut() {
+                    match bound {
+                        syn::TypeParamBound::Trait(tr) => {
+                            tr.path = self.resolve_path(&tr.path);
+                        }
+                        syn::TypeParamBound::Lifetime(_) => {}
+                    }
+                }
+                let resolved_trait = Type::TraitObject(resolved_type);
+                resolved_trait
+            }
             Type::Verbatim(x) => unimplemented!("{:#?}", x),
             Type::__Nonexhaustive => unimplemented!(),
         }
@@ -161,16 +181,19 @@ impl RRefedFinder {
             }
         };
 
-        // If the path starts with `::` and doesn't come from `crate` or `super, we know that it's
-        // already fully qualified.
-        if path.leading_colon.is_some() && !crate_or_super {
+        // If the path starts with `::` and doesn't come from `crate` or `super, or it comes from
+        // some unknown module(external module), we know that it's already fully qualified.
+        if path.leading_colon.is_some() && !crate_or_super || current_node.borrow().children.get(&path_segments[0].ident).is_none() {
             return path.clone();
         }
 
         // Walk the module tree and resolve the type.
         let final_symbol = path_segments.remove(path_segments.len() - 1);
         for path_segment in path_segments {
-            let next_node = current_node.borrow().children[&path_segment.ident].clone();
+            let current_node_ref = current_node.borrow();
+            let next_node = current_node_ref.children.get(&final_symbol.ident);
+            let next_node = next_node.expect(&format!("Unable to find {:?} in {:#?}", final_symbol.ident, current_node)).clone();
+            drop(current_node_ref);
             current_node = match next_node {
                 ModuleItem::Type(_) => panic!("Resolving {:#?} for {:#?}. Node {:#?} is a symbol and cannot have child.", path_segment, current_node.borrow().path, next_node),
                 ModuleItem::Module(md) => {
@@ -181,12 +204,14 @@ impl RRefedFinder {
             };
         }
 
-        let final_node = current_node.borrow().children[&final_symbol.ident].clone();
+        let current_node = current_node.borrow();
+        let final_node = current_node.children.get(&final_symbol.ident);
+        let final_node = final_node.expect(&format!("Unable to find {:?} in {:#?}", final_symbol.ident, current_node));
         match final_node {
             ModuleItem::Module(md) => panic!("Expecting a type, but found a module. {:?}", md),
             ModuleItem::Type(ty) => {
                 let ty = ty.borrow();
-                assert!(ty.public);
+                // assert!(ty.public, "Expecting {:?} to be public when resolving {:?}", ty, path);
                 idents_to_path(ty.path.clone())
             }
         }

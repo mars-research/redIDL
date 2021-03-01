@@ -40,6 +40,16 @@ pub struct SymbolTreeNodeInner {
     pub children: HashMap<Ident, ModuleItem>,
 }
 
+// #[macro_export]
+macro_rules! get_default_mapping {
+    ($($arg:literal),*) => (
+        vec![
+            $( (format_ident!($arg), ModuleItem::Type(TypeNode::new(false, true, true, vec![format_ident!($arg)]))), )*
+        ].into_iter().collect()
+
+    );
+}
+
 impl SymbolTreeNodeInner {
     fn new(ident: &Ident, parent: Option<SymbolTreeNode>) -> Self {
         let mut path = vec!{};
@@ -50,7 +60,7 @@ impl SymbolTreeNodeInner {
         Self {
             path,
             parent,
-            children: HashMap::new(),
+            children: get_default_mapping!("bool", "u8", "u16", "u32", "u64", "i8", "i16", "i32", "i64", "usize"),
         }
     }
 
@@ -62,7 +72,15 @@ impl SymbolTreeNodeInner {
     pub fn insert(&mut self, ident: &Ident, module_item: ModuleItem) -> Option<ModuleItem> {
         self.children.insert(ident.clone(), module_item)
     }
+
+    
+    /// Generate default mappings for builtin types like u8.
+    fn default_mapping() -> HashMap<Ident, ModuleItem> {
+        get_default_mapping!()
+
+    }
 }
+
 
 #[derive(Debug, Clone)]
 pub struct SymbolTreeNode {
