@@ -1,5 +1,5 @@
 use mem::replace;
-use syn::{File, FnArg, Item, ItemTrait, Path, PathSegment, ReturnType, TraitItem, TraitItemMethod, Type};
+use syn::{File, FnArg, Item, ItemTrait, Path, PathArguments, PathSegment, ReturnType, TraitItem, TraitItemMethod, Type};
 use std::collections::{HashMap, HashSet};
 use std::mem;
 
@@ -35,7 +35,6 @@ impl RRefedFinder {
     }
 
     fn find_rrefed_recursive(&mut self, items: &Vec<syn::Item>) {
-        let mut generated_items = Vec::<syn::Item>::new();
         for item in items.iter() {
             match item {
                 Item::Mod(md) => {
@@ -207,15 +206,28 @@ impl RRefedFinder {
         let current_node = current_node.borrow();
         let final_node = current_node.children.get(&final_segment.ident);
         let final_node = final_node.expect(&format!("Unable to find {:?} in {:#?}", final_segment.ident, current_node));
-        match final_node {
+        let mut resolved_path = match final_node {
             ModuleItem::Module(md) => panic!("Expecting a type, but found a module. {:?}", md),
             ModuleItem::Type(ty) => {
                 let ty = ty.borrow();
-                // assert!(ty.public, "Expecting {:?} to be public when resolving {:?}", ty, path);
                 idents_to_path(ty.path.clone())
+            }
+        };
+
+        let mut resolved_arguments = final_segment.arguments.clone();
+        if let PathArguments::AngleBracketed(generic) = &mut resolved_arguments {
+            for arg in generic.args.iter_mut() {
+                match arg {
+                    syn::GenericArgument::Lifetime(_) => { /* noop */ },
+                    syn::GenericArgument::Type(ty) => *ty = self.find_rrefed_in_type(ty),
+                    syn::GenericArgument::Binding(x) => unimplemented!("{:#?}", x),
+                    syn::GenericArgument::Constraint(x) => unimplemented!("{:#?}", x),
+                    syn::GenericArgument::Const(_) => { /* noop */ },
+                }
             }
         }
 
-        // TODO: fix 
+        resolved_path.segments.last_mut().unwrap().arguments = resolved_arguments;
+        resolved_path
     }
 }
