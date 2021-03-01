@@ -39,7 +39,7 @@ impl RRefedFinder {
         for item in items.iter() {
             match item {
                 Item::Mod(md) => {
-                    println!("Resolving module {:?}", md.ident);
+                    println!("Finding RRefed for module {:?}", md.ident);
                     if let Some((_, items)) = &md.content {
                         let current_node = self.symbol_tree_node.borrow();
                         let next_frame = current_node.children.get(&md.ident);
@@ -188,11 +188,11 @@ impl RRefedFinder {
         }
 
         // Walk the module tree and resolve the type.
-        let final_symbol = path_segments.remove(path_segments.len() - 1);
+        let final_segment = path_segments.remove(path_segments.len() - 1);
         for path_segment in path_segments {
             let current_node_ref = current_node.borrow();
-            let next_node = current_node_ref.children.get(&final_symbol.ident);
-            let next_node = next_node.expect(&format!("Unable to find {:?} in {:#?}", final_symbol.ident, current_node)).clone();
+            let next_node = current_node_ref.children.get(&final_segment.ident);
+            let next_node = next_node.expect(&format!("Unable to find {:?} in {:#?}", final_segment.ident, current_node)).clone();
             drop(current_node_ref);
             current_node = match next_node {
                 ModuleItem::Type(_) => panic!("Resolving {:#?} for {:#?}. Node {:#?} is a symbol and cannot have child.", path_segment, current_node.borrow().path, next_node),
@@ -205,8 +205,8 @@ impl RRefedFinder {
         }
 
         let current_node = current_node.borrow();
-        let final_node = current_node.children.get(&final_symbol.ident);
-        let final_node = final_node.expect(&format!("Unable to find {:?} in {:#?}", final_symbol.ident, current_node));
+        let final_node = current_node.children.get(&final_segment.ident);
+        let final_node = final_node.expect(&format!("Unable to find {:?} in {:#?}", final_segment.ident, current_node));
         match final_node {
             ModuleItem::Module(md) => panic!("Expecting a type, but found a module. {:?}", md),
             ModuleItem::Type(ty) => {
@@ -215,5 +215,7 @@ impl RRefedFinder {
                 idents_to_path(ty.path.clone())
             }
         }
+
+        // TODO: fix 
     }
 }

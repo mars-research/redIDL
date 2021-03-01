@@ -117,7 +117,7 @@ impl TypeResolver {
     /// Resolve all relative paths generated `resolve_types_recursive` by into terminal
     /// paths. 
     fn resolve_relative_paths_recursive_for_symbol_tree_node(&mut self, symbol_tree_node: SymbolTreeNode) {
-        println!("resolving module {:#?}", symbol_tree_node.borrow().path);
+        println!("Resolving relative path for module {:?}", symbol_tree_node.borrow().path[symbol_tree_node.borrow().path.len() - 1]);
         for (_, child) in &symbol_tree_node.borrow().children {
             self.resolve_relative_paths_recursive_for_module_item(child.clone(), symbol_tree_node.clone());
         }

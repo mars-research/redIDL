@@ -56,7 +56,7 @@ fn run(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let symbol_tree = type_resolver.resolve_types(&ast);
 
     // Find all `RRef`ed types
-    let mut rref_finder = type_resolution::rrefed_finder::RRefedFinder::new(symbol_tree.clone());
+    let rref_finder = type_resolution::rrefed_finder::RRefedFinder::new(symbol_tree.clone());
     let rrefed_types = rref_finder.find_rrefed(&ast);
     
     // Generate code in place
@@ -80,6 +80,7 @@ fn run(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
 fn generate_typeid(ast: &mut syn::File, types: &HashSet<Type>) {
     let impls = types.iter().enumerate().map(|(i, ty)| {
+        let i = i as u64;
         Item::Impl(parse_quote!{
             impl TypeIdentifiable for #ty {
                 fn type_id() -> u64 {
