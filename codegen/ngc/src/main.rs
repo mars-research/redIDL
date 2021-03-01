@@ -8,7 +8,7 @@ mod type_resolution;
 #[macro_use]
 extern crate derivative;
 
-use std::env;
+use std::{collections::HashSet, env};
 use std::error::Error;
 use std::fs::File;
 use std::io::Read;
@@ -16,7 +16,7 @@ use std::process::Command;
 
 use clap::{App, Arg, ArgMatches};
 use quote::quote;
-use syn::{Item, Meta, NestedMeta};
+use syn::{Item, ItemMod, Meta, NestedMeta, Type, parse_quote};
 
 fn main() {
     let matches = App::new("Proxy Generator")
@@ -40,10 +40,8 @@ fn main() {
 }
 
 fn run(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    // let input_path = args.value_of("INPUT").unwrap();
-    // let output_path = args.value_of("OUTPUT").unwrap();
-    let input_path = "../../../../interface/generated/src/lib.rs";
-    let output_path = "/dev/null";
+    let input_path = args.value_of("INPUT").unwrap();
+    let output_path = args.value_of("OUTPUT").unwrap();
     let mut file = File::open(&input_path).unwrap();
     let mut content = String::new();
     file.read_to_string(&mut content).unwrap();
@@ -60,10 +58,10 @@ fn run(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // Find all `RRef`ed types
     let mut rref_finder = type_resolution::rrefed_finder::RRefedFinder::new(symbol_tree.clone());
     let rrefed_types = rref_finder.find_rrefed(&ast);
-    panic!("{:#?}", rrefed_types);
     
     // Generate code in place
     generate(&mut ast);
+    generate_typeid(&mut ast, &rrefed_types);
 
     // Write output
     let output = quote!(#ast).to_string();
@@ -75,7 +73,32 @@ fn run(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         .arg(format!("rustfmt {}", &output_path))
         .output();
 
+    println!("Output is written to {}", output_path);
+
     Ok(())
+}
+
+fn generate_typeid(ast: &mut syn::File, types: &HashSet<Type>) {
+    let impls = types.iter().enumerate().map(|(i, ty)| {
+        Item::Impl(parse_quote!{
+            impl TypeIdentifiable for #ty {
+                fn type_id() -> u64 {
+                    #i
+                }
+            }
+        })
+    });
+
+    let md = parse_quote! {
+        mod typeid {
+            pub trait TypeIdentifiable {
+                fn type_id() -> u64;
+            }
+
+            #(#impls)*
+        }
+    };
+    ast.items.push(Item::Mod(md))
 }
 
 fn generate(ast: &mut syn::File) {
