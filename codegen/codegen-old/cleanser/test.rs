@@ -1946,6 +1946,6 @@ pub mod tpm {
             fn tpm_flush_context(&self, locality: u32, flush_handle: u32) -> bool;
         }
     }
-    pub use usr_tpm::*;
-    pub use tpm_dev::*;
+    pub use usr_tpm::{TpmBankInfo, TpmDevInfo, TpmTHa, TpmAlgorithms, TpmSE, UsrTpm};
+    pub use tpm_dev::{TpmDev, TpmRegs};
 }

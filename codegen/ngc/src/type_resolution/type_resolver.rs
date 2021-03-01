@@ -63,7 +63,7 @@ impl TypeResolver {
                             let md_ref = md.borrow();
                             let md_ref_ref = md_ref.module.borrow();
                             let next_node = md_ref_ref.children.get(path_segment);
-                            let next_node = next_node.expect(&format!("ident {:#?} not found in {:#?} when resolving {:#?}", path_segment, md_ref_ref.path, item.borrow().path));
+                            let next_node = next_node.expect(&format!("ident {:#?} not found in {:#?} when resolving {:#?}", path_segment, md_ref_ref, item.borrow().path));
                             match next_node {
                                 ModuleItem::Type(ty) => assert!(ty.borrow().public, "Node is not public. {:?}", next_node),
                                 ModuleItem::Module(md) => assert!(md.borrow().public, "Node is not public. {:?}", next_node),
@@ -101,7 +101,6 @@ impl TypeResolver {
                
             }
             ModuleItem::Module(item) => {
-                assert!(item.borrow().public, "{:#?}", item);
                 // Go to the children frame and do recursive call.
                 let old_frame = self.symbol_tree_node.clone();
                 self.symbol_tree_node = item.borrow().module.clone();
@@ -118,6 +117,7 @@ impl TypeResolver {
     /// Resolve all relative paths generated `resolve_types_recursive` by into terminal
     /// paths. 
     fn resolve_relative_paths_recursive_for_symbol_tree_node(&mut self, symbol_tree_node: SymbolTreeNode) {
+        println!("resolving module {:#?}", symbol_tree_node.borrow().path);
         for (_, child) in &symbol_tree_node.borrow().children {
             self.resolve_relative_paths_recursive_for_module_item(child.clone(), symbol_tree_node.clone());
         }
@@ -128,6 +128,9 @@ impl TypeResolver {
     fn resolve_types_recursive(&mut self, items: &Vec<syn::Item>) {
         for item in items.iter() {
             match item {
+                Item::Const(item) => {
+                    self.add_definition_symbol(&item.ident, &item.vis);
+                }
                 Item::Enum(item) => {
                     self.add_definition_symbol(&item.ident, &item.vis);
                 }
@@ -139,6 +142,9 @@ impl TypeResolver {
                     }
                 }
                 Item::Struct(item) => {
+                    self.add_definition_symbol(&item.ident, &item.vis);
+                }
+                Item::Trait(item) => {
                     self.add_definition_symbol(&item.ident, &item.vis);
                 }
                 Item::Type(item) => {
@@ -210,16 +216,4 @@ impl TypeResolver {
         let symbol = TypeNode::new(is_public(vis), true, true, path);
         self.symbol_tree_node.borrow_mut().insert(ident, ModuleItem::Type(symbol)).expect_none("type node shouldn't apprear more than once");
     }
-    
-    // /// Add a symbol to the corrent scope.
-    // fn add_symbol(&mut self, ident: &Ident, symbol: TypeNode) {
-    //     // Construct module item
-    //     let module_item = ModuleItem {
-    //         public: is_public(vis),
-    //         terminal,
-    //         item_type: ModuleItem::Type(symbol)
-    //     };
-
-    //     self.symbol_tree_node.insert(ident, module_item).expect("type node shouldn't apprear more than once");
-    // }
 }

@@ -12,3 +12,4 @@ proc-macro2 = { version = "1.0.24", features = ["nightly"] }
 clap = "2.33.3"
 syn = { version = "1.0.58", features = ["full", "extra-traits", "parsing", "proc-macro"]}
 quote = "1.0.7"
+derivative = "2.2.0"

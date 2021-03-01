@@ -7,7 +7,7 @@ use super::utils::is_public;
 
 /// A tree that contains all the symbols in the AST.
 /// Each node is a module
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SymbolTree {
     pub root: ModuleItem,
 }
@@ -28,11 +28,13 @@ impl SymbolTree {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Derivative, Clone)]
+#[derivative(Debug)]
 pub struct SymbolTreeNodeInner {
     /// Caching the path to thid module so the user doesn't have to do the lookup manually.
     pub path: Vec<Ident>,
-    /// The `super`, aka parent, module. 
+    /// The `super`, aka parent, module.
+    #[derivative(Debug="ignore")] 
     pub parent: Option<SymbolTreeNode>,
     /// All items in this module, including symbols and modules.
     pub children: HashMap<Ident, ModuleItem>,

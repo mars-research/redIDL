@@ -16,7 +16,7 @@
             },
             "program": "${cargo:program}",
             "args": [
-                "../../../../interface/generated/src/lib.rs",
+                "../codegen-old/cleanser/test.rs",
                 "/dev/null"
             ],
         },

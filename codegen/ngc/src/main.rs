@@ -1,10 +1,12 @@
-#![feature(generic_associated_types)]
+#![feature(option_expect_none, box_syntax)]
 
 mod proxy;
 mod utils;
 mod domain_creation;
 mod type_resolution;
 
+#[macro_use]
+extern crate derivative;
 
 use std::env;
 use std::error::Error;
@@ -23,13 +25,13 @@ fn main() {
         .arg(
             Arg::with_name("INPUT")
                 .help("Sets the input file.")
-                .required(true)
+                // .required(true)
                 .index(1),
         )
         .arg(
             Arg::with_name("OUTPUT")
                 .help("Sets the output file.")
-                .required(true)
+                // .required(true)
                 .index(2),
         )
         .get_matches();
@@ -38,8 +40,10 @@ fn main() {
 }
 
 fn run(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    let input_path = args.value_of("INPUT").unwrap();
-    let output_path = args.value_of("OUTPUT").unwrap();
+    // let input_path = args.value_of("INPUT").unwrap();
+    // let output_path = args.value_of("OUTPUT").unwrap();
+    let input_path = "../../../../interface/generated/src/lib.rs";
+    let output_path = "/dev/null";
     let mut file = File::open(&input_path).unwrap();
     let mut content = String::new();
     file.read_to_string(&mut content).unwrap();
@@ -49,10 +53,14 @@ fn run(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // Clean the file
     remove_prelude(&mut ast);
 
+    // Resolve types
+    let type_resolver = type_resolution::type_resolver::TypeResolver::new();
+    let symbol_tree = type_resolver.resolve_types(&ast);
+
     // Find all `RRef`ed types
-    // let mut resolver = type_resolution::type_resolver::TypeSolver::new();
-    // let types = resolver.resolve_types(&ast);
-    // panic!("{:#?}", types);
+    let mut rref_finder = type_resolution::rrefed_finder::RRefedFinder::new(symbol_tree.clone());
+    let rrefed_types = rref_finder.find_rrefed(&ast);
+    panic!("{:#?}", rrefed_types);
     
     // Generate code in place
     generate(&mut ast);
