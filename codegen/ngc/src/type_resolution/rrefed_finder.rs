@@ -88,6 +88,7 @@ impl RRefedFinder {
         for arg in &method.sig.inputs {
             self.find_rrefed_in_fnarg(&arg);
         }
+        self.find_rrefed_in_returntype(&method.sig.output);
     }
 
     fn find_rrefed_in_fnarg(&mut self, arg: &FnArg) {
