@@ -191,8 +191,8 @@ impl RRefedFinder {
         let final_segment = path_segments.remove(path_segments.len() - 1);
         for path_segment in path_segments {
             let current_node_ref = current_node.borrow();
-            let next_node = current_node_ref.children.get(&final_segment.ident);
-            let next_node = next_node.expect(&format!("Unable to find {:?} in {:#?}", final_segment.ident, current_node)).clone();
+            let next_node = current_node_ref.children.get(&path_segment.ident);
+            let next_node = next_node.expect(&format!("Unable to find {:?} in {:#?}", path_segment.ident, current_node)).clone();
             drop(current_node_ref);
             current_node = match next_node {
                 ModuleItem::Type(_) => panic!("Resolving {:#?} for {:#?}. Node {:#?} is a symbol and cannot have child.", path_segment, current_node.borrow().path, next_node),

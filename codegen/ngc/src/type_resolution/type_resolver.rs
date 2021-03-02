@@ -34,7 +34,7 @@ impl TypeResolver {
         match module_item.clone() {
             ModuleItem::Type(item) => {
                 // No further resolution is required.
-                if item.borrow().terminal {
+                if item.borrow().terminal.is_terminal() {
                     return;
                 }
 
@@ -78,22 +78,23 @@ impl TypeResolver {
                 // terminal.
                 // If the node is a module, we can treat it as terminal. It's up to the user to
                 // resolve their types that in the module. 
-                match current_node.clone() {
-                    ModuleItem::Module(_) => { /* noop */ }
+                item.borrow_mut().terminal = match current_node.clone() {
+                    ModuleItem::Module(_) => { Terminal::Module }
                     ModuleItem::Type(ty) => {
-                        if !ty.borrow().terminal {
+                        if !ty.borrow().terminal.is_terminal() {
                             let parent = match previous_node.unwrap() {
                                 ModuleItem::Module(md) => md.borrow().module.clone(),
                                 ModuleItem::Type(_) => unreachable!()
                             };
                             self.resolve_relative_paths_recursive_for_module_item(current_node.clone(), parent);
                         }
-                        assert!(ty.borrow().terminal);
+                        assert!(ty.borrow().terminal.is_terminal());
+                        ty.borrow().terminal.clone()
                     }
-                }
+                };
+                assert!(item.borrow().terminal.is_terminal());
 
                 // Populate the absolute path to us.
-                item.borrow_mut().terminal = true;
                 match current_node.clone() {
                     ModuleItem::Type(sym) => item.borrow_mut().path = sym.borrow().path.clone(),
                     ModuleItem::Module(md) => item.borrow_mut().path = md.borrow().module.borrow().path.clone(),
@@ -129,7 +130,24 @@ impl TypeResolver {
         for item in items.iter() {
             match item {
                 Item::Const(item) => {
-                    self.add_definition_symbol(&item.ident, &item.vis);
+                    let mut path = self.symbol_tree_node.borrow().path.clone();
+                    path.push(item.ident.clone());
+                    match &*item.expr {
+                        syn::Expr::Lit(lit) => {
+                            match &lit.lit {
+                                syn::Lit::Int(lit) => {
+                                    let lit = lit.clone();
+                                    let symbol = TypeNode::new(is_public(&item.vis), Terminal::IntLiteral(lit), true, path);
+                                    self.symbol_tree_node.borrow_mut().insert(&item.ident, ModuleItem::Type(symbol)).expect_none("type node shouldn't apprear more than once");
+                                }
+                                _ => {
+                                    let symbol = TypeNode::new(is_public(&item.vis), Terminal::Literal, true, path);
+                                    self.symbol_tree_node.borrow_mut().insert(&item.ident, ModuleItem::Type(symbol)).expect_none("type node shouldn't apprear more than once");
+                                }
+                            }
+                        }
+                        _ => self.add_definition_symbol(&item.ident, &item.vis),
+                    }
                 }
                 Item::Enum(item) => {
                     self.add_definition_symbol(&item.ident, &item.vis);
@@ -199,7 +217,10 @@ impl TypeResolver {
         // If the path doesn't start with "crate" or "super", this means that it comes from
         // an external library, which means we should mark it as terminal.
         let first_segment = &path[0];
-        let terminal = (first_segment != "crate") && (first_segment != "super");
+        let terminal = match (first_segment != "crate") && (first_segment != "super") {
+            true => Terminal::ForeignType,
+            false => Terminal::None,
+        };
 
         // Add the symbol to the module.
         let symbol = TypeNode::new(is_public(vis), terminal, leading_colon, path);
@@ -213,7 +234,7 @@ impl TypeResolver {
         path.push(ident.clone());
 
         // Add symbol.
-        let symbol = TypeNode::new(is_public(vis), true, true, path);
-        self.symbol_tree_node.borrow_mut().insert(ident, ModuleItem::Type(symbol)).expect_none("type node shouldn't apprear more than once");
+        let symbol = TypeNode::new(is_public(vis), Terminal::Type, true, path);
+        self.symbol_tree_node.borrow_mut().insert(ident, ModuleItem::Type(symbol.clone())).expect_none(&format!("Trying to insert {:?} but already exist. Type node shouldn't apprear more than once", symbol));
     }
 }

@@ -16,6 +16,12 @@ There are two objectives that we want to achieve in type resolution.
     of the trait, we can correctly import the proxy and use it.
 
 
+# Features
+1. Fully qualified path resolution.
+1. Finding unique types.
+1. Constant resolution, e.g., resolving `[u8; PAGE_SIZE]` to `[u8; 4096]`. This currently only
+   support integer types with sufix.
+
 # Architecture
 To figure out all unique `RRef`ed types, we put the fully-qualified paths of all `RRef`ed types
 into a hashset, this gives us all the unique ones. This leaves us to figure out how to get the
@@ -75,4 +81,19 @@ Then, we use all information in the moduel and try connecting all pieces togethe
 symbols have a terminal mapping. For example, `Foo` in `crate::inner_b` will get resolved from
 `crate::inner_a::Foo`. For usage like `renamed_a::Bar`, the user will need to follow the tree and
 figure out the fully-qualified path themselves.
+
+# Limitations
+
+* No diamond-shape dependency from external libraries. We don't pull the external libraries to
+  analyze them so there's no way for us to get the true terminal node out from them.
+
+* Only `pub use foo::abc` if `foo` is public. The type resolver will follow the import path and find
+  the terminal node. If `foo` is not public, the type resolver will have to mark the public imported
+  symbol as the terminal node. This will create a problem if there're two of them pointing to the
+  same type. One solution to this is that we store one of the known public symbol along with its
+  type, one might want to implement this in the future.
+
+* All constants must be resolvable by the IDL compiler at compile time. Otherwise, it will think
+  that `[u8; 100]` and `[u8; BSIZE]` while in reality they might be the same.
+
 

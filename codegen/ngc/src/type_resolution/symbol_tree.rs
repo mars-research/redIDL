@@ -2,7 +2,7 @@ use std::{borrow::Borrow, cell::{Ref, RefCell, RefMut}, collections::HashMap, ha
 
 use proc_macro2::Span;
 use quote::format_ident;
-use syn::{Ident, PathSegment, VisPublic, Visibility};
+use syn::{Ident, Item, Lit, LitInt, PathSegment, VisPublic, Visibility};
 use super::utils::is_public;
 
 /// A tree that contains all the symbols in the AST.
@@ -44,7 +44,7 @@ pub struct SymbolTreeNodeInner {
 macro_rules! get_default_mapping {
     ($($arg:literal),*) => (
         vec![
-            $( (format_ident!($arg), ModuleItem::Type(TypeNode::new(false, true, true, vec![format_ident!($arg)]))), )*
+            $( (format_ident!($arg), ModuleItem::Type(TypeNode::new(false, Terminal::Type, true, vec![format_ident!($arg)]))), )*
         ].into_iter().collect()
 
     );
@@ -179,7 +179,7 @@ pub struct TypeNodeInner {
     /// Whether the type is public.
     pub public: bool,
     /// If true, this node is mapped to its definition and no further resolution is needed.
-    pub terminal: bool,
+    pub terminal: Terminal,
     /// Whether the path has a leading colon. Usually means that it's absolute.
     pub leading_colon: bool,
     /// Current best known absolute path of the symbol.
@@ -192,7 +192,7 @@ pub struct TypeNode {
 }
 
 impl TypeNode {
-    pub fn new(public: bool, terminal: bool, leading_colon: bool, path: Vec<Ident>) -> Self {
+    pub fn new(public: bool, terminal: Terminal, leading_colon: bool, path: Vec<Ident>) -> Self {
         Self {
             inner: Rc::new(RefCell::new(TypeNodeInner {
                 public,
@@ -209,5 +209,30 @@ impl TypeNode {
 
     pub fn borrow_mut(&self) -> RefMut<TypeNodeInner> {
         RefCell::borrow_mut(&self.inner)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum Terminal {
+    /// Not a terminal node.
+    None,
+    /// A type, like structs and traits.
+    Type,
+    /// An imported type that comes from a `use` statment on an external library.
+    ForeignType,
+    /// A module.
+    Module,
+    /// An integer literal.
+    IntLiteral(LitInt),
+    /// All constant literals besides integers.
+    Literal,
+}
+
+impl Terminal {
+    pub fn is_terminal(&self) -> bool {
+        match self {
+            Terminal::None => false,
+            _ => true,
+        }
     }
 }
