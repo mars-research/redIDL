@@ -50,18 +50,9 @@ fn run(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     // Clean the file
     remove_prelude(&mut ast);
-
-    // Resolve types
-    let type_resolver = type_resolution::type_resolver::TypeResolver::new();
-    let symbol_tree = type_resolver.resolve_types(&ast);
-
-    // Find all `RRef`ed types
-    let rref_finder = type_resolution::rrefed_finder::RRefedFinder::new(symbol_tree.clone());
-    let rrefed_types = rref_finder.find_rrefed(&ast);
     
     // Generate code in place
     generate(&mut ast);
-    generate_typeid(&mut ast, &rrefed_types);
 
     // Write output
     let output = quote!(#ast).to_string();
@@ -78,31 +69,11 @@ fn run(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn generate_typeid(ast: &mut syn::File, types: &HashSet<Type>) {
-    let impls = types.iter().enumerate().map(|(i, ty)| {
-        let i = i as u64;
-        Item::Impl(parse_quote!{
-            impl TypeIdentifiable for #ty {
-                fn type_id() -> u64 {
-                    #i
-                }
-            }
-        })
-    });
-
-    let md = parse_quote! {
-        mod typeid {
-            pub trait TypeIdentifiable {
-                fn type_id() -> u64;
-            }
-
-            #(#impls)*
-        }
-    };
-    ast.items.push(Item::Mod(md))
-}
-
 fn generate(ast: &mut syn::File) {
+    // Generate type id
+    crate::type_resolution::generate_typeid(ast);
+
+    // Generate proxy and domain creations.
     let mut module_path = Vec::<syn::Ident>::new();
     generate_recurse(&mut ast.items, &mut module_path)
 }
