@@ -40,7 +40,7 @@ pub struct SymbolTreeNodeInner {
     pub children: HashMap<Ident, ModuleItem>,
 }
 
-// #[macro_export]
+/// Generate default mappings for builtin types like u8.
 macro_rules! get_default_mapping {
     ($($arg:literal),*) => (
         vec![
@@ -71,13 +71,6 @@ impl SymbolTreeNodeInner {
 
     pub fn insert(&mut self, ident: &Ident, module_item: ModuleItem) -> Option<ModuleItem> {
         self.children.insert(ident.clone(), module_item)
-    }
-
-    
-    /// Generate default mappings for builtin types like u8.
-    fn default_mapping() -> HashMap<Ident, ModuleItem> {
-        get_default_mapping!()
-
     }
 }
 
@@ -222,10 +215,8 @@ pub enum Terminal {
     ForeignType,
     /// A module.
     Module,
-    /// An integer literal.
-    IntLiteral(LitInt),
-    /// All constant literals besides integers.
-    Literal,
+    /// A literal.
+    Literal(Lit),
 }
 
 impl Terminal {

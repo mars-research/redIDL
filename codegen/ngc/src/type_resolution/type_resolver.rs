@@ -134,17 +134,8 @@ impl TypeResolver {
                     path.push(item.ident.clone());
                     match &*item.expr {
                         syn::Expr::Lit(lit) => {
-                            match &lit.lit {
-                                syn::Lit::Int(lit) => {
-                                    let lit = lit.clone();
-                                    let symbol = TypeNode::new(is_public(&item.vis), Terminal::IntLiteral(lit), true, path);
-                                    self.symbol_tree_node.borrow_mut().insert(&item.ident, ModuleItem::Type(symbol)).expect_none("type node shouldn't apprear more than once");
-                                }
-                                _ => {
-                                    let symbol = TypeNode::new(is_public(&item.vis), Terminal::Literal, true, path);
-                                    self.symbol_tree_node.borrow_mut().insert(&item.ident, ModuleItem::Type(symbol)).expect_none("type node shouldn't apprear more than once");
-                                }
-                            }
+                            let symbol = TypeNode::new(is_public(&item.vis), Terminal::Literal(lit.lit.clone()), true, path);
+                            self.symbol_tree_node.borrow_mut().insert(&item.ident, ModuleItem::Type(symbol)).expect_none("type node shouldn't apprear more than once");
                         }
                         _ => self.add_definition_symbol(&item.ident, &item.vis),
                     }
@@ -200,8 +191,7 @@ impl TypeResolver {
             // e.g. `a::*`. This is banned because pulling the depencies in and analyze them is not
             // within the scope of this project.
             syn::UseTree::Glob(tree) => {
-                eprintln!("Use globe is disallowed in IDL. For example, you cannot do `use foo::*`. You did: {:#?}, {:?}", tree, path)
-                // panic!("Use globe is disallowed in IDL. For example, you cannot do `use foo::*`. You did: {:#?}, {:?}", tree, path)
+                panic!("Use globe is disallowed in IDL. For example, you cannot do `use foo::*`. You did: {:#?}, {:?}", tree, path)
             }
             // e.g. `{b::{Barc}, Car}`.
             syn::UseTree::Group(tree) => {

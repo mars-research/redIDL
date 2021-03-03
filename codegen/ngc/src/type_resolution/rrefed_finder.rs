@@ -1,12 +1,10 @@
 use mem::replace;
-use syn::{File, FnArg, Item, ItemTrait, Path, PathArguments, PathSegment, ReturnType, TraitItem, TraitItemMethod, Type};
+use syn::{Expr, ExprLit, File, FnArg, Item, ItemTrait, Path, PathArguments, PathSegment, ReturnType, TraitItem, TraitItemMethod, Type};
 use std::collections::{HashMap, HashSet};
 use std::mem;
 
 use super::symbol_tree::*;
 use super::utils::*;
-
-pub type PathSegments = Vec<PathSegment>;
 
 
 pub struct RRefedFinder {
@@ -116,7 +114,7 @@ impl RRefedFinder {
             },
             Type::Path(ty) => {
                 let mut resolved_type = ty.clone();
-                resolved_type.path = self.resolve_path(&ty.path);
+                resolved_type.path = self.resolve_path(&ty.path).0;
                 let resolved_type = Type::Path(resolved_type);
                 self.type_list.insert(resolved_type.clone());
                 resolved_type
@@ -150,7 +148,7 @@ impl RRefedFinder {
                 for bound in resolved_type.bounds.iter_mut() {
                     match bound {
                         syn::TypeParamBound::Trait(tr) => {
-                            tr.path = self.resolve_path(&tr.path);
+                            tr.path = self.resolve_path(&tr.path).0;
                         }
                         syn::TypeParamBound::Lifetime(_) => {}
                     }
@@ -163,8 +161,9 @@ impl RRefedFinder {
         }
     }
 
-    /// Resolve path in the current module and return the resolved path.
-    fn resolve_path(&mut self, path: &Path) -> Path {
+    /// Resolve path in the current module and return the resolved path and its corresponding node,
+    /// if it doesn't come from an external crate.
+    fn resolve_path(&mut self, path: &Path) -> (Path, Option<ModuleItem>) {
         let mut current_node = self.symbol_tree_node.clone();
         let mut path_segments: Vec<PathSegment> = path.segments.iter().map(|x| x.clone()).collect();
         let crate_or_super = {
@@ -184,12 +183,16 @@ impl RRefedFinder {
         // If the path starts with `::` and doesn't come from `crate` or `super, or it comes from
         // some unknown module(external module), we know that it's already fully qualified.
         if path.leading_colon.is_some() && !crate_or_super || current_node.borrow().children.get(&path_segments[0].ident).is_none() {
-            return path.clone();
+            return (path.clone(), None);
         }
 
         // Walk the module tree and resolve the type.
         let final_segment = path_segments.remove(path_segments.len() - 1);
         for path_segment in path_segments {
+            if path_segment.arguments != PathArguments::None {
+                panic!("Path arguments(e.g. generics) is not supported in the inner path segments.\nPath: {:?}\nPath segment: {:?}", path, path_segment);
+            }
+
             let current_node_ref = current_node.borrow();
             let next_node = current_node_ref.children.get(&path_segment.ident);
             let next_node = next_node.expect(&format!("Unable to find {:?} in {:#?}", path_segment.ident, current_node)).clone();
@@ -215,7 +218,14 @@ impl RRefedFinder {
             }
         };
 
-        let mut resolved_arguments = final_segment.arguments.clone();
+        // Resolve the generics.
+        resolved_path.segments.last_mut().unwrap().arguments = self.resolve_path_arguments(&final_segment.arguments);
+        (resolved_path, Some(final_node.clone()))
+    }
+
+    /// Resolve any types or constants in the path argument and returns the resolved path arguments back.
+    fn resolve_path_arguments(&mut self, arguments: &PathArguments) -> PathArguments {
+        let mut resolved_arguments = arguments.clone();
         if let PathArguments::AngleBracketed(generic) = &mut resolved_arguments {
             for arg in generic.args.iter_mut() {
                 match arg {
@@ -223,12 +233,33 @@ impl RRefedFinder {
                     syn::GenericArgument::Type(ty) => *ty = self.find_rrefed_in_type(ty),
                     syn::GenericArgument::Binding(x) => unimplemented!("{:#?}", x),
                     syn::GenericArgument::Constraint(x) => unimplemented!("{:#?}", x),
-                    syn::GenericArgument::Const(_) => { /* noop */ },
+                    syn::GenericArgument::Const(expr) => {
+                        let lit = match expr {
+                            syn::Expr::Lit(lit) => lit.lit.clone(),
+                            syn::Expr::Path(path) => {
+                                println!("Resolving lit for path {:?}", path);
+                                let (path, node) = self.resolve_path(&path.path);
+                                let node = node.expect(&format!("Generic experssion must not contains paths from external crates.\nPath arguments: {:?}\nForeign path: {:?}", arguments, path));
+                                match node {
+                                    ModuleItem::Module(_) => unreachable!(),
+                                    ModuleItem::Type(ty) => {
+                                        match &ty.borrow().terminal {
+                                            Terminal::Literal(lit) => lit.clone(),
+                                            _ => panic!("All generic constants must be able to resolved to a compile time constant.\nPath: {:?}\nNode: {:?}", path, ty),
+                                        }
+                                    }
+                                }
+                            }
+                            _ => unimplemented!(),
+                        };
+                        *expr = Expr::Lit(ExprLit{
+                            attrs: vec![],
+                            lit,
+                        });
+                    },
                 }
             }
         }
-
-        resolved_path.segments.last_mut().unwrap().arguments = resolved_arguments;
-        resolved_path
+        resolved_arguments
     }
 }
