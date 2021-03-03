@@ -106,8 +106,33 @@ impl RRefedFinder {
     fn find_rrefed_in_type(&mut self, ty: &Type) -> Type {
         match ty {
             Type::Array(ty) => {
+                // Resolve the type.
                 let mut resolved_type = ty.clone();
                 resolved_type.elem = box self.find_rrefed_in_type(&ty.elem);
+
+                // Resolve the length to a literal
+                resolved_type.len = match &ty.len {
+                    Expr::Lit(lit) => Expr::Lit(lit.clone()),
+                    Expr::Path(path) => {
+                        let (path, node) = self.resolve_path(&path.path);
+                        let node = node.expect(&format!("Array length experssion must not contains paths from external crates.\nType: {:?}\nForeign path: {:?}", ty, path));
+                        match node {
+                            ModuleItem::Module(_) => unreachable!(),
+                            ModuleItem::Type(ty_node) => {
+                                match &ty_node.borrow().terminal {
+                                    Terminal::Literal(lit) => Expr::Lit(ExprLit{
+                                        attrs: vec![],
+                                        lit: lit.clone(),
+                                    }) ,
+                                    _ => panic!("All generic constants must be able to resolved to a compile time constant.\nPath: {:?}\nNode: {:?}", path, ty_node),
+                                }
+                            }
+                        }
+                    }
+                    _ => unimplemented!()
+                };
+
+                // Put the resolved type into the type list.
                 let resolved_type = Type::Array(resolved_type);
                 self.type_list.insert(resolved_type.clone());
                 resolved_type
@@ -237,7 +262,6 @@ impl RRefedFinder {
                         let lit = match expr {
                             syn::Expr::Lit(lit) => lit.lit.clone(),
                             syn::Expr::Path(path) => {
-                                println!("Resolving lit for path {:?}", path);
                                 let (path, node) = self.resolve_path(&path.path);
                                 let node = node.expect(&format!("Generic experssion must not contains paths from external crates.\nPath arguments: {:?}\nForeign path: {:?}", arguments, path));
                                 match node {
