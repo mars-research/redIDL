@@ -184,6 +184,11 @@ fn generate_proxy_impl_one(trait_ident: &Ident, method: &TraitItemMethod, cleane
             let r = self.domain.#ident(#cleaned_args);
             #[cfg(feature = "trampoline")]
             let r = unsafe { #trampoline_ident(&self.domain, #cleaned_args) };
+
+            #[cfg(feature = "trampoline")]
+            unsafe {
+                ::libsyscalls::syscalls::sys_discard_cont();
+            }
     
             // move thread back
             unsafe { ::libsyscalls::syscalls::sys_update_current_domain_id(caller_domain) };
