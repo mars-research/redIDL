@@ -9,7 +9,11 @@ A new tool to replace the [old redIDL code generation tool](../codegen-old/READM
 
 
 
-
+# Problems that we've encountered
+* Interface dependes on rref. If rref defines TypeIdentifiable, `cargo expand` wouldn't work because
+  interface depends on rref, rref depends on the not-yet-generated TypeIdentifiable, which makes
+  interface failed to compile. If interface defines TypeIdentifiable, rref needs to depends on
+  interface, which creates a circular dependency.
 
 # Problems with the old codegen
 
