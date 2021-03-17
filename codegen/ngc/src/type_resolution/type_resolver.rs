@@ -50,9 +50,10 @@ impl TypeResolver {
                     if path[0].to_string() == "crate" {
                         current_node = self.symbol_tree.root.clone();
                         path.remove(0);
-                    }
-                    if path[0].to_string() == "super" {
+                    } else if path[0].to_string() == "super" {
                         current_node = ModuleItem::Module(ModuleNode::new(true, module.parent().unwrap()));
+                        path.remove(0);
+                    } else if path[0].to_string() == "self" {
                         path.remove(0);
                     }
                 }
@@ -162,6 +163,9 @@ impl TypeResolver {
                 Item::Union(item) => {
                     self.add_definition_symbol(&item.ident, &item.vis);
                 }
+                Item::Fn(item) => {
+                    self.add_definition_symbol(&item.sig.ident, &item.vis);
+                }
                 Item::Use(item) => {
                     let path = vec!{};
                     self.resolve_types_in_usetree_recursive(&item.tree, &item.vis, path, item.leading_colon.is_some());
@@ -175,7 +179,11 @@ impl TypeResolver {
         match tree {
             // e.g. `a::b::{Baz}`. A Tree.
             syn::UseTree::Path(tree) => {
-                path.push(tree.ident.clone());
+                if tree.ident == "self" {
+                    path = self.symbol_tree_node.borrow().path.clone();
+                } else {
+                    path.push(tree.ident.clone());
+                }
                 self.resolve_types_in_usetree_recursive(&tree.tree, vis, path, leading_colon);
             }
             // e.g. `Baz`. Leaf node.

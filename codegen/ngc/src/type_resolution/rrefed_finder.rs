@@ -200,6 +200,9 @@ impl RRefedFinder {
                 current_node = current_node.parent().unwrap();
                 path_segments.remove(0);
                 true
+            } else if path_segments[0].ident == "self" {
+                path_segments.remove(0);
+                true
             } else {
                 false
             }

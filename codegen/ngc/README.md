@@ -10,10 +10,27 @@ A new tool to replace the [old redIDL code generation tool](../codegen-old/READM
 
 
 # Problems that we've encountered
+## Unable to compile interface and generate code without TypeIdentifiable.
 * Interface dependes on rref. If rref defines TypeIdentifiable, `cargo expand` wouldn't work because
   interface depends on rref, rref depends on the not-yet-generated TypeIdentifiable, which makes
   interface failed to compile. If interface defines TypeIdentifiable, rref needs to depends on
   interface, which creates a circular dependency.
+    * Solution 1: write your own `cargo expand`. This will disallow macros.
+    * Solution 2: dummpy TypeIdentifiable. One extra step but should work.
+
+## Where should be generated TypeIdentifiable live?
+* Typeid can be generated with dummy TypeIdentifiable. Now, new problem: where do you put it? If we
+  put TypeIdentifiable in `rref`, dependencies will not be found because the path are resolved 
+  within `interface`. If we put it in `interface`, the import from `rref` will create a circular
+  dependency. If we put it in a seperate crate, it needs to depend on `rref` and creates a circular
+  dependency again. 
+    * Solution 1:  Generate to rref. Ban renaming, ban usage of external types unless from rref.
+      ngc should refactor `crate` to `interace` and `rref` to `crate`. This still doesn't work
+      because it will create a circular dependency again.
+    * Solution 2: everything one crate. Does `rref` belong to `interface` though?
+  Decision: Put `rref` inside of `interface` and make everything one single crate. This is ugly but
+  this might be the only solution we have.
+
 
 # Problems with the old codegen
 

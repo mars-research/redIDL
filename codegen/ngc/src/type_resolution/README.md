@@ -96,4 +96,9 @@ figure out the fully-qualified path themselves.
 * All constants must be resolvable by the IDL compiler at compile time. Otherwise, it will think
   that `[u8; 100]` and `[u8; BSIZE]` while in reality they might be the same.
 
+* If a generic has a member field, the typeid will not be generated for it. The IDL compiler is not
+  smart enough to fully understand generic. To deal with things like this in `RRefArray` and 
+  `RRefArray`, the IDL compiler made a special case for them. It blindly generates typeid for
+  `[Option<RRef<T>>; N]` when it sees `crate::rref::RRefDeque<T>` or `crate::rref::RRefArray<T>`.
+
 
