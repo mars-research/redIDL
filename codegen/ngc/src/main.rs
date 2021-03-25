@@ -1,4 +1,4 @@
-#![feature(option_expect_none, box_syntax, box_patterns)]
+#![feature(option_expect_none, box_syntax, box_patterns, option_unwrap_none)]
 
 mod proxy;
 mod utils;

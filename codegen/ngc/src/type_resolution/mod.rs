@@ -54,13 +54,12 @@ pub fn generate_typeid(ast: &mut syn::File) {
             use crate::rref::traits::{CustomCleanup, TypeIdentifiable};
 
             /// Drops the pointer, assumes it is of type T
-            fn drop_t<T: CustomCleanup + TypeIdentifiable>(ptr: *mut u8) {
-                // println!("DROPPING {}", core::any::type_name::<T>());
-                unsafe {
-                    let ptr_t: *mut T = transmute(ptr);
-                    // recursively invoke further shared heap deallocation in the tree of rrefs
-                    (&mut *ptr_t).cleanup();
-                }
+            unsafe fn drop_t<T: CustomCleanup + TypeIdentifiable>(ptr: *mut u8) {
+                // Cast the pointer to a pointer of type T
+                let ptr_t: *mut T = transmute(ptr);
+                // Drop the object pointed by the buffer. This should recursively drop all the
+                // nested fields of type T, if there's any.
+                core::mem::drop(ptr_t);
             }
 
             struct DropMap(HashMap<u64, fn(*mut u8) -> ()>);

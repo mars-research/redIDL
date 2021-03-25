@@ -13,16 +13,16 @@ pub struct RRefedFinder {
     /// The root module node, i.e. the `crate` node.
     symbol_tree: SymbolTree,
     /// The current module node that's used in recursive calls.
-    symbol_tree_node: SymbolTreeNode,
+    current_module: Module,
 }
 
 impl RRefedFinder {
     pub fn new(symbol_tree: SymbolTree) -> Self {
-        let symbol_tree_node = symbol_tree.root_symbol_tree_node();
+        let symbol_tree_node = symbol_tree.root_module();
         Self {
             type_list: HashSet::new(),
             symbol_tree: symbol_tree,
-            symbol_tree_node,
+            current_module: symbol_tree_node,
         }
     }
 
@@ -38,17 +38,21 @@ impl RRefedFinder {
                 Item::Mod(md) => {
                     println!("Finding RRefed for module {:?}", md.ident);
                     if let Some((_, items)) = &md.content {
-                        let current_node = self.symbol_tree_node.borrow();
+                        // Push a frame
+                        let current_node = self.current_module.borrow();
                         let next_frame = current_node.children.get(&md.ident);
                         let next_frame = next_frame.expect(&format!("Module {:?} not found in {:#?}", md.ident, current_node));
-                        let next_frame = match next_frame {
-                            ModuleItem::Module(md) => md.borrow().module.clone(),
-                            ModuleItem::Type(_) => unreachable!("Expecting a module, not a symbol.")
+                        let next_frame = match &next_frame.borrow().terminal {
+                            Terminal::Module(md) => md.clone(),
+                            _ => panic!("Expecting a module, not a symbol.")
                         };
                         drop(current_node);
-                        self.symbol_tree_node = next_frame;
+                        self.current_module = next_frame;
+                        // Recurse into the new frame.
                         self.find_rrefed_recursive(items);
-                        self.symbol_tree_node = self.symbol_tree_node.parent().unwrap();
+                        // Pop a frame
+                        let parent_module = self.current_module.borrow().node.borrow().get_parent_module();
+                        self.current_module = parent_module;
                     }
                 }
                 Item::Trait(tr) => {
@@ -116,18 +120,14 @@ impl RRefedFinder {
                     Expr::Path(path) => {
                         let (path, node) = self.resolve_path(&path.path);
                         let node = node.expect(&format!("Array length experssion must not contains paths from external crates.\nType: {:?}\nForeign path: {:?}", ty, path));
-                        match node {
-                            ModuleItem::Module(_) => unreachable!(),
-                            ModuleItem::Type(ty_node) => {
-                                match &ty_node.borrow().terminal {
-                                    Terminal::Literal(lit) => Expr::Lit(ExprLit{
-                                        attrs: vec![],
-                                        lit: lit.clone(),
-                                    }) ,
-                                    _ => panic!("All generic constants must be able to resolved to a compile time constant.\nPath: {:?}\nNode: {:?}", path, ty_node),
-                                }
-                            }
-                        }
+                        let lit = match &node.borrow().terminal {
+                            Terminal::Literal(lit) => Expr::Lit(ExprLit{
+                                attrs: vec![],
+                                lit: lit.clone(),
+                            }),
+                            _ => panic!(),
+                        };
+                        lit
                     }
                     _ => unimplemented!()
                 };
@@ -188,16 +188,17 @@ impl RRefedFinder {
 
     /// Resolve path in the current module and return the resolved path and its corresponding node,
     /// if it doesn't come from an external crate.
-    fn resolve_path(&mut self, path: &Path) -> (Path, Option<ModuleItem>) {
-        let mut current_node = self.symbol_tree_node.clone();
+    fn resolve_path(&mut self, path: &Path) -> (Path, Option<SymbolTreeNode>) {
+        let mut current_node = self.current_module.clone();
         let mut path_segments: Vec<PathSegment> = path.segments.iter().map(|x| x.clone()).collect();
         let crate_or_super = {
             if path_segments[0].ident == "crate" {
-                current_node = self.symbol_tree.root_symbol_tree_node();
+                current_node = self.symbol_tree.root_module();
                 path_segments.remove(0);
                 true
             } else if path_segments[0].ident == "super" {
-                current_node = current_node.parent().unwrap();
+                let parent_module = current_node.borrow().node.borrow().get_parent_module();
+                current_node = parent_module;
                 path_segments.remove(0);
                 true
             } else if path_segments[0].ident == "self" {
@@ -225,26 +226,29 @@ impl RRefedFinder {
             let next_node = current_node_ref.children.get(&path_segment.ident);
             let next_node = next_node.expect(&format!("Unable to find {:?} in {:#?}", path_segment.ident, current_node)).clone();
             drop(current_node_ref);
-            current_node = match next_node {
-                ModuleItem::Type(_) => panic!("Resolving {:#?} for {:#?}. Node {:#?} is a symbol and cannot have child.", path_segment, current_node.borrow().path, next_node),
-                ModuleItem::Module(md) => {
-                    let md = md.borrow();
-                    assert!(md.public);
-                    md.module.clone()
+            let next_node = next_node.borrow();
+            current_node = match &next_node.terminal {
+                Terminal::Module(md) => {
+                    assert!(next_node.public);
+                    md.clone()
                 }
+                _ => panic!("Resolving {:#?} for {:#?}. Node {:#?} is a symbol and cannot have child.", path_segment, current_node.borrow().node.borrow().path, next_node),
             };
         }
 
-        let current_node = current_node.borrow();
-        let final_node = current_node.children.get(&final_segment.ident);
-        let final_node = final_node.expect(&format!("Unable to find {:?} in {:#?}", final_segment.ident, current_node));
-        let mut resolved_path = match final_node {
-            ModuleItem::Module(md) => panic!("Expecting a type, but found a module. {:?}", md),
-            ModuleItem::Type(ty) => {
-                let ty = ty.borrow();
-                idents_to_path(ty.path.clone())
+        let current_node_ref = current_node.borrow();
+        let final_node = current_node_ref.children.get(&final_segment.ident);
+        let final_node = final_node.expect(&format!("Unable to find {:?} in {:#?}", final_segment.ident, current_node_ref)).clone();
+        drop(current_node_ref);
+        let final_node_ref = final_node.borrow();
+        let mut resolved_path = match &final_node_ref.terminal {
+            Terminal::Module(md) => panic!("Expecting a type, but found a module. {:?}", md),
+            Terminal::None => panic!("Path not resolved: {:?}", final_node_ref.path),
+            _ => {
+                idents_to_path(&final_node_ref.path)
             }
         };
+        drop(final_node_ref);
 
         // Resolve the generics.
         resolved_path.segments.last_mut().unwrap().arguments = self.resolve_path_arguments(&final_segment.arguments);
@@ -267,15 +271,11 @@ impl RRefedFinder {
                             syn::Expr::Path(path) => {
                                 let (path, node) = self.resolve_path(&path.path);
                                 let node = node.expect(&format!("Generic experssion must not contains paths from external crates.\nPath arguments: {:?}\nForeign path: {:?}", arguments, path));
-                                match node {
-                                    ModuleItem::Module(_) => unreachable!(),
-                                    ModuleItem::Type(ty) => {
-                                        match &ty.borrow().terminal {
-                                            Terminal::Literal(lit) => lit.clone(),
-                                            _ => panic!("All generic constants must be able to resolved to a compile time constant.\nPath: {:?}\nNode: {:?}", path, ty),
-                                        }
-                                    }
-                                }
+                                let lit = match &node.borrow().terminal {
+                                    Terminal::Literal(lit) => lit.clone(),
+                                    _ => panic!("All generic constants must be able to resolved to a compile time constant.\nPath: {:?}\nNode: {:?}", path, node.borrow()),
+                                };
+                                lit
                             }
                             _ => unimplemented!(),
                         };

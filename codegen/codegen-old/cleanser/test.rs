@@ -16,7 +16,7 @@ extern crate bitflags;
 extern crate codegen_proc;
 pub mod bdev {
     /// RedLeaf block device interface
-    use rref::{RRef, RRefDeque, traits::TypeIdentifiable};
+    use interface::rref::{RRef, RRefDeque, traits::TypeIdentifiable};
     use crate::error::Result;
     use crate::rpc::RpcResult;
     pub const BSIZE: usize = 4096;
@@ -69,7 +69,7 @@ pub mod bdev {
 pub mod dom_a {
     /// RedLeaf block device interface
     use alloc::boxed::Box;
-    use rref::{RRef, RRefDeque};
+    use interface::rref::{RRef, RRefDeque};
     #[interface]
     pub trait DomA {
         fn ping_pong(&self, buffer: RRef<[u8; 1024]>) -> RRef<[u8; 1024]>;
@@ -81,7 +81,7 @@ pub mod dom_a {
     }
 }
 pub mod dom_c {
-    use rref::RRef;
+    use interface::rref::RRef;
     use crate::rpc::RpcResult;
     #[interface]
     pub trait DomC {
@@ -480,7 +480,7 @@ pub mod error {
 pub mod net {
     /// RedLeaf network interface
     use alloc::boxed::Box;
-    use rref::{RRef, RRefDeque};
+    use interface::rref::{RRef, RRefDeque};
     use alloc::{vec::Vec, collections::VecDeque};
     use crate::error::Result;
     use crate::rpc::RpcResult;
@@ -576,7 +576,7 @@ pub mod net {
 pub mod pci {
     /// RedLeaf PCI bus driver interface
     use alloc::boxed::Box;
-    use rref::{RRef, RRefDeque};
+    use interface::rref::{RRef, RRefDeque};
     use pci_driver::{PciDriver, PciClass, BarRegions, PciDrivers};
     #[interface]
     pub trait PCI: Send {
@@ -682,7 +682,7 @@ pub mod rpc {
 }
 pub mod usrnet {
     use alloc::boxed::Box;
-    use rref::RRefVec;
+    use interface::rref::RRefVec;
     use crate::rpc::RpcResult;
     use crate::error::Result;
     /// UsrNet interface
@@ -715,7 +715,7 @@ pub mod vfs {
     /// Some of the syscalls do no return the buffer back to the caller. Feel free
     /// to change it if it's needed.
     use alloc::boxed::Box;
-    use rref::RRefVec;
+    use interface::rref::RRefVec;
     pub use crate::vfs::file::{FileMode, FileStat, INodeFileType};
     pub use crate::vfs::directory::{DirectoryEntry, DirectoryEntryRef};
     pub use crate::error::{Result, ErrorKind};
@@ -1519,7 +1519,7 @@ pub mod vfs {
 pub mod rv6 {
     /// Rv6 system calls
     use alloc::boxed::Box;
-    use rref::RRefVec;
+    use interface::rref::RRefVec;
     use crate::vfs::{UsrVFS, NFILE};
     use crate::net::Net;
     use crate::usrnet::UsrNet;
