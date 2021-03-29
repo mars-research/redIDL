@@ -101,7 +101,7 @@ impl TypeResolver {
                         Terminal::Module(md) => {
                             let md = md.borrow();
                             let next_node = md.children.get(path_segment);
-                            let next_node = next_node.expect(&format!("When resolving {:?}, ident {:?} is not found in {:#?}", node_ref.path, path_segment, md));
+                            let next_node = crate::expect!(next_node, "When resolving {:?}, ident {:?} is not found in {:#?}", node_ref.path, path_segment, md);
                             assert!(next_node.borrow().public);
                             previous_node = Some(current_node.clone());
                             current_node = next_node.clone();

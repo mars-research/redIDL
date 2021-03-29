@@ -44,10 +44,10 @@ impl RRefedFinder {
                         // Push a frame
                         let current_node = self.current_module.borrow();
                         let next_frame = current_node.children.get(&md.ident);
-                        let next_frame = next_frame.expect(&format!(
+                        let next_frame = crate::expect!(next_frame,
                             "Module {:?} not found in {:#?}",
                             md.ident, current_node
-                        ));
+                        );
                         let next_frame = match &next_frame.borrow().terminal {
                             Terminal::Module(md) => md.clone(),
                             _ => panic!("Expecting a module, not a symbol."),
@@ -130,7 +130,7 @@ impl RRefedFinder {
                     Expr::Lit(lit) => Expr::Lit(lit.clone()),
                     Expr::Path(path) => {
                         let (path, node) = self.resolve_path(&path.path);
-                        let node = node.expect(&format!("Array length experssion must not contains paths from external crates.\nType: {:?}\nForeign path: {:?}", ty, path));
+                        let node = crate::expect!(node, "Array length experssion must not contains paths from external crates.\nType: {:?}\nForeign path: {:?}", ty, path);
                         let lit = match &node.borrow().terminal {
                             Terminal::Literal(lit) => Expr::Lit(ExprLit {
                                 attrs: vec![],
@@ -241,11 +241,10 @@ impl RRefedFinder {
 
             let current_node_ref = current_node.borrow();
             let next_node = current_node_ref.children.get(&path_segment.ident);
-            let next_node = next_node
-                .expect(&format!(
+            let next_node = crate::expect!(next_node, 
                     "Unable to find {:?} in {:#?}",
                     path_segment.ident, current_node
-                ))
+                )
                 .clone();
             drop(current_node_ref);
             let next_node = next_node.borrow();
@@ -265,11 +264,10 @@ impl RRefedFinder {
 
         let current_node_ref = current_node.borrow();
         let final_node = current_node_ref.children.get(&final_segment.ident);
-        let final_node = final_node
-            .expect(&format!(
+        let final_node = crate::expect!(final_node,
                 "Unable to find {:?} in {:#?}",
                 final_segment.ident, current_node_ref
-            ))
+            )
             .clone();
         drop(current_node_ref);
         let final_node_ref = final_node.borrow();
@@ -301,7 +299,7 @@ impl RRefedFinder {
                             syn::Expr::Lit(lit) => lit.lit.clone(),
                             syn::Expr::Path(path) => {
                                 let (path, node) = self.resolve_path(&path.path);
-                                let node = node.expect(&format!("Generic experssion must not contains paths from external crates.\nPath arguments: {:?}\nForeign path: {:?}", arguments, path));
+                                let node = crate::expect!(node, "Generic experssion must not contains paths from external crates.\nPath arguments: {:?}\nForeign path: {:?}", arguments, path);
                                 let lit = match &node.borrow().terminal {
                                     Terminal::Literal(lit) => lit.clone(),
                                     _ => panic!("All generic constants must be able to resolved to a compile time constant.\nPath: {:?}\nNode: {:?}", path, node.borrow()),

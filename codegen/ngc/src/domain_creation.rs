@@ -25,11 +25,12 @@ pub fn generate_domain_creation(
                 }
             }
             None
-        })
-        .expect(&format!(
+        });
+
+    let domain_path = crate::expect!(domain_path,
             "Domain path not found for {} definition {}",
             DOMAIN_CREATION_ATTR, input.ident
-        ));
+        );
 
     // Remove the interface attribute and add a comment so we know it's an domain_creation
     remove_attribute!(input, DOMAIN_CREATION_ATTR);

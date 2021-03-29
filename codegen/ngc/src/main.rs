@@ -3,6 +3,7 @@
 mod domain_creation;
 mod proxy;
 mod type_resolution;
+#[macro_use]
 mod utils;
 
 #[macro_use]
