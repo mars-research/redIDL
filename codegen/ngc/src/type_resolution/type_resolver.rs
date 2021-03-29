@@ -85,7 +85,7 @@ impl TypeResolver {
                         current_node = self.symbol_tree.root.clone();
                         path.remove(0);
                     } else if path[0].to_string() == "super" {
-                        current_node = node.borrow().parent.as_ref().unwrap().clone();
+                        current_node = self.current_module.borrow().node.borrow().parent.as_ref().unwrap().clone();
                         path.remove(0);
                     } else if path[0].to_string() == "self" {
                         path.remove(0);
@@ -297,7 +297,7 @@ impl TypeResolver {
         // If the path doesn't start with "crate" or "super", this means that it comes from
         // an external library, which means we should mark it as terminal.
         let first_segment = &path[0];
-        let terminal = match (first_segment != "crate") && (first_segment != "super") {
+        let terminal = match (first_segment != "crate") && (first_segment != "super") && (first_segment != "self") {
             true => Terminal::ForeignType,
             false => Terminal::None,
         };
