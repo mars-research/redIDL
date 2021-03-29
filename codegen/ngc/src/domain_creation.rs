@@ -15,22 +15,21 @@ pub fn generate_domain_creation(
     if !has_attribute!(input, DOMAIN_CREATION_ATTR) {
         return None;
     }
-    let domain_path = input
-        .attrs
-        .iter()
-        .find_map(|attr| {
-            if let syn::Meta::NameValue(kv) = attr.parse_meta().unwrap() {
-                if kv.path.is_ident(DOMAIN_CREATION_ATTR) {
-                    return Some(kv.lit);
-                }
+    let domain_path = input.attrs.iter().find_map(|attr| {
+        if let syn::Meta::NameValue(kv) = attr.parse_meta().unwrap() {
+            if kv.path.is_ident(DOMAIN_CREATION_ATTR) {
+                return Some(kv.lit);
             }
-            None
-        });
+        }
+        None
+    });
 
-    let domain_path = crate::expect!(domain_path,
-            "Domain path not found for {} definition {}",
-            DOMAIN_CREATION_ATTR, input.ident
-        );
+    let domain_path = crate::expect!(
+        domain_path,
+        "Domain path not found for {} definition {}",
+        DOMAIN_CREATION_ATTR,
+        input.ident
+    );
 
     // Remove the interface attribute and add a comment so we know it's an domain_creation
     remove_attribute!(input, DOMAIN_CREATION_ATTR);

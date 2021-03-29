@@ -52,7 +52,6 @@ macro_rules! for_enums_add_attribute {
     };
 }
 
-
 /// A faster alternative for `result.expect(fmt, args)`
 /// `Result::expect` will run the formatter regardless of the result.
 /// This macros allows us to not run the formatter when the result is a `Some`.

@@ -59,7 +59,12 @@ impl ModuleInner {
     }
 
     pub fn insert(&mut self, ident: &Ident, node: SymbolTreeNode) -> Option<SymbolTreeNode> {
-        trace!("Adding {:?} to module {:?} with node {:?}", ident, self.path, node);
+        trace!(
+            "Adding {:?} to module {:?} with node {:?}",
+            ident,
+            self.path,
+            node
+        );
         self.children.insert(ident.clone(), node)
     }
 }

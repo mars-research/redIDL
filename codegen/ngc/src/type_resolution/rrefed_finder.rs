@@ -44,9 +44,11 @@ impl RRefedFinder {
                         // Push a frame
                         let current_node = self.current_module.borrow();
                         let next_frame = current_node.children.get(&md.ident);
-                        let next_frame = crate::expect!(next_frame,
+                        let next_frame = crate::expect!(
+                            next_frame,
                             "Module {:?} not found in {:#?}",
-                            md.ident, current_node
+                            md.ident,
+                            current_node
                         );
                         let next_frame = match &next_frame.borrow().terminal {
                             Terminal::Module(md) => md.clone(),
@@ -241,11 +243,13 @@ impl RRefedFinder {
 
             let current_node_ref = current_node.borrow();
             let next_node = current_node_ref.children.get(&path_segment.ident);
-            let next_node = crate::expect!(next_node, 
-                    "Unable to find {:?} in {:#?}",
-                    path_segment.ident, current_node
-                )
-                .clone();
+            let next_node = crate::expect!(
+                next_node,
+                "Unable to find {:?} in {:#?}",
+                path_segment.ident,
+                current_node
+            )
+            .clone();
             drop(current_node_ref);
             let next_node = next_node.borrow();
             current_node = match &next_node.terminal {
@@ -264,11 +268,13 @@ impl RRefedFinder {
 
         let current_node_ref = current_node.borrow();
         let final_node = current_node_ref.children.get(&final_segment.ident);
-        let final_node = crate::expect!(final_node,
-                "Unable to find {:?} in {:#?}",
-                final_segment.ident, current_node_ref
-            )
-            .clone();
+        let final_node = crate::expect!(
+            final_node,
+            "Unable to find {:?} in {:#?}",
+            final_segment.ident,
+            current_node_ref
+        )
+        .clone();
         drop(current_node_ref);
         let final_node_ref = final_node.borrow();
         let mut resolved_path = match &final_node_ref.terminal {
