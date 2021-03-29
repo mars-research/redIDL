@@ -1,11 +1,19 @@
 use super::module::Module;
 
-use std::{borrow::Borrow, cell::{Ref, RefCell, RefMut}, collections::HashMap, hash::Hash, ops::{Deref, DerefMut}, rc::Rc};
+use std::{
+    borrow::Borrow,
+    cell::{Ref, RefCell, RefMut},
+    collections::HashMap,
+    hash::Hash,
+    ops::{Deref, DerefMut},
+    rc::Rc,
+};
 
 use proc_macro2::Span;
 use quote::format_ident;
-use syn::{Ident, Item, ItemFn, ItemStruct, ItemTrait, Lit, LitInt, PathSegment, VisPublic, Visibility};
-
+use syn::{
+    Ident, Item, ItemFn, ItemStruct, ItemTrait, Lit, LitInt, PathSegment, VisPublic, Visibility,
+};
 
 #[derive(Derivative)]
 #[derivative(Debug)]
@@ -13,8 +21,8 @@ pub struct SymbolTreeNodeInner {
     /// Whether the type is public.
     pub public: bool,
     /// If `self` is a module, `self.parent` is the `super` module, aka parent module.
-    /// Otherwise, it is the module it belongs to. 
-    #[derivative(Debug="ignore")] 
+    /// Otherwise, it is the module it belongs to.
+    #[derivative(Debug = "ignore")]
     pub parent: Option<SymbolTreeNode>,
     /// If true, this node is mapped to its definition and no further resolution is needed.
     pub terminal: Terminal,
@@ -40,7 +48,13 @@ pub struct SymbolTreeNode {
 }
 
 impl SymbolTreeNode {
-    pub fn new(public: bool, parent: Option<SymbolTreeNode>, terminal: Terminal, leading_colon: bool, path: Vec<Ident>) -> Self {
+    pub fn new(
+        public: bool,
+        parent: Option<SymbolTreeNode>,
+        terminal: Terminal,
+        leading_colon: bool,
+        path: Vec<Ident>,
+    ) -> Self {
         Self {
             inner: Rc::new(RefCell::new(SymbolTreeNodeInner {
                 public,
@@ -48,7 +62,7 @@ impl SymbolTreeNode {
                 terminal,
                 leading_colon,
                 path,
-            }))
+            })),
         }
     }
 

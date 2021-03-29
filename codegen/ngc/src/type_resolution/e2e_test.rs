@@ -2,7 +2,8 @@ use quote::quote;
 
 fn expect_to_generate_typeid(input: &str, types: Vec<&str>) {
     // Get expected output
-    let expected_output = format!("
+    let expected_output = format!(
+        "
         {}
 
         pub mod typeid {{
@@ -12,15 +13,26 @@ fn expect_to_generate_typeid(input: &str, types: Vec<&str>) {
 
             {}
         }}
-    ", input, types.iter().enumerate().map(|(i, ty)| {
-        format!("
+    ",
+        input,
+        types
+            .iter()
+            .enumerate()
+            .map(|(i, ty)| {
+                format!(
+                    "
             impl TypeIdentifiable for {} {{
                 fn type_id() -> u64 {{
                     {}u64
                 }}
             }}
-        ", ty, i)
-    }).collect::<Vec<String>>().join(""));
+        ",
+                    ty, i
+                )
+            })
+            .collect::<Vec<String>>()
+            .join("")
+    );
     let expected_ast = syn::parse_file(&expected_output).unwrap();
 
     // Generate code.

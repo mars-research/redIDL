@@ -1,8 +1,8 @@
 use crate::{has_attribute, remove_attribute};
 
-use quote::{quote, format_ident};
-use syn::{parse_quote, Item, ItemTrait, ItemFn, TraitItemMethod, Ident, FnArg, Token, TraitItem};
+use quote::{format_ident, quote};
 use syn::punctuated::Punctuated;
+use syn::{parse_quote, FnArg, Ident, Item, ItemFn, ItemTrait, Token, TraitItem, TraitItemMethod};
 
 const INTERFACE_ATTR: &'static str = "interface";
 
@@ -13,8 +13,9 @@ pub fn generate_proxy(input: &mut ItemTrait, _module_path: &Vec<Ident>) -> Optio
 
     // Remove the interface attribute and add a comment so we know it's an interface
     remove_attribute!(input, INTERFACE_ATTR);
-    input.attrs.push(parse_quote!{#[doc = "redIDL Auto Generated: interface trait. Generations are below"]});
-
+    input.attrs.push(
+        parse_quote! {#[doc = "redIDL Auto Generated: interface trait. Generations are below"]},
+    );
 
     let trait_ident = &input.ident;
     let proxy_ident = format_ident!("{}Proxy", trait_ident);
@@ -25,12 +26,12 @@ pub fn generate_proxy(input: &mut ItemTrait, _module_path: &Vec<Ident>) -> Optio
             domain: ::alloc::boxed::Box<dyn #trait_ident>,
             domain_id: u64,
         }
-        
+
         #[cfg(feature = "proxy")]
         unsafe impl Sync for #proxy_ident {}
         #[cfg(feature = "proxy")]
         unsafe impl Send for #proxy_ident {}
-        
+
         #[cfg(feature = "proxy")]
         impl #proxy_ident {
             pub fn new(domain_id: u64, domain: ::alloc::boxed::Box<dyn #trait_ident>) -> Self {
@@ -42,15 +43,13 @@ pub fn generate_proxy(input: &mut ItemTrait, _module_path: &Vec<Ident>) -> Optio
         }
     };
 
-    
     // Remove non-method members. We don't really care about them
-    let trait_methods: Vec<TraitItemMethod> = input.items
+    let trait_methods: Vec<TraitItemMethod> = input
+        .items
         .iter()
-        .filter_map(|item| {
-            match item {
-                TraitItem::Method(method) => Some(method.clone()),
-                _ => None,
-            }
+        .filter_map(|item| match item {
+            TraitItem::Method(method) => Some(method.clone()),
+            _ => None,
         })
         .collect();
 
@@ -61,7 +60,7 @@ pub fn generate_proxy(input: &mut ItemTrait, _module_path: &Vec<Ident>) -> Optio
             let mut args = Punctuated::<FnArg, Token![,]>::new();
             for arg in &method.sig.inputs {
                 match arg {
-                    FnArg::Receiver(_) => {},
+                    FnArg::Receiver(_) => {}
                     FnArg::Typed(typed) => args.push(FnArg::Typed(typed.clone())),
                 }
             }
@@ -70,11 +69,22 @@ pub fn generate_proxy(input: &mut ItemTrait, _module_path: &Vec<Ident>) -> Optio
         cleaned_trait_methods
     };
 
-    let proxy_impl = generate_proxy_impl(trait_ident, &proxy_ident, &trait_methods[..], &cleaned_trait_methods[..]);
+    let proxy_impl = generate_proxy_impl(
+        trait_ident,
+        &proxy_ident,
+        &trait_methods[..],
+        &cleaned_trait_methods[..],
+    );
     let trampolines = generate_trampolines(trait_ident, &cleaned_trait_methods[..]);
 
-    let proxy_comment_begin_str = format!("----------{} Proxy generation begins-------------", trait_ident);
-    let tramp_comment_begin_str = format!("----------{} Trampoline generation begins-------------", trait_ident);
+    let proxy_comment_begin_str = format!(
+        "----------{} Proxy generation begins-------------",
+        trait_ident
+    );
+    let tramp_comment_begin_str = format!(
+        "----------{} Trampoline generation begins-------------",
+        trait_ident
+    );
 
     let output: syn::File = parse_quote! {
         #[doc = #proxy_comment_begin_str]
@@ -89,10 +99,11 @@ pub fn generate_proxy(input: &mut ItemTrait, _module_path: &Vec<Ident>) -> Optio
     Some(output.items)
 }
 
-
-
 /// Generate trampolines for `methods`.
-fn generate_trampolines(trait_ident: &Ident, methods: &[TraitItemMethod]) -> proc_macro2::TokenStream {
+fn generate_trampolines(
+    trait_ident: &Ident,
+    methods: &[TraitItemMethod],
+) -> proc_macro2::TokenStream {
     let trampolines = methods.iter()
         .map(|method| {
             let sig = &method.sig;
@@ -156,8 +167,16 @@ fn generate_trampolines(trait_ident: &Ident, methods: &[TraitItemMethod]) -> pro
 }
 
 /// Generate proxy implementation, e.g., `impl DomC for DomCProxy`.
-fn generate_proxy_impl(trait_ident: &Ident, proxy_ident: &Ident, methods: &[TraitItemMethod], cleaned_methods: &[TraitItemMethod]) -> Item {
-    let proxy_impls = methods.iter().zip(cleaned_methods).map(|pair| generate_proxy_impl_one(trait_ident, pair.0, pair.1));
+fn generate_proxy_impl(
+    trait_ident: &Ident,
+    proxy_ident: &Ident,
+    methods: &[TraitItemMethod],
+    cleaned_methods: &[TraitItemMethod],
+) -> Item {
+    let proxy_impls = methods
+        .iter()
+        .zip(cleaned_methods)
+        .map(|pair| generate_proxy_impl_one(trait_ident, pair.0, pair.1));
 
     parse_quote! {
         #[cfg(feature = "proxy")]
@@ -168,7 +187,11 @@ fn generate_proxy_impl(trait_ident: &Ident, proxy_ident: &Ident, methods: &[Trai
 }
 
 /// Generate the proxy implementation for one single method
-fn generate_proxy_impl_one(trait_ident: &Ident, method: &TraitItemMethod, cleaned_method: &TraitItemMethod) -> ItemFn {
+fn generate_proxy_impl_one(
+    trait_ident: &Ident,
+    method: &TraitItemMethod,
+    cleaned_method: &TraitItemMethod,
+) -> ItemFn {
     let sig = &method.sig;
     let ident = &sig.ident;
     let trampoline_ident = format_ident!("{}_{}_tramp", trait_ident, ident);
@@ -179,7 +202,7 @@ fn generate_proxy_impl_one(trait_ident: &Ident, method: &TraitItemMethod, cleane
         fn #ident(#args) #return_ty {
             // move thread to next domain
             let caller_domain = unsafe { ::libsyscalls::syscalls::sys_update_current_domain_id(self.domain_id) };
-    
+
             #[cfg(not(feature = "trampoline"))]
             let r = self.domain.#ident(#cleaned_args);
             #[cfg(feature = "trampoline")]
@@ -189,10 +212,10 @@ fn generate_proxy_impl_one(trait_ident: &Ident, method: &TraitItemMethod, cleane
             unsafe {
                 ::libsyscalls::syscalls::sys_discard_cont();
             }
-    
+
             // move thread back
             unsafe { ::libsyscalls::syscalls::sys_update_current_domain_id(caller_domain) };
-    
+
             r
         }
     }

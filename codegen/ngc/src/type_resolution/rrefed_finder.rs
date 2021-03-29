@@ -1,15 +1,18 @@
+use log::info;
 use mem::replace;
-use syn::{Expr, ExprLit, File, FnArg, Item, ItemTrait, Path, PathArguments, PathSegment, ReturnType, TraitItem, TraitItemMethod, Type};
 use std::collections::{HashMap, HashSet};
 use std::mem;
+use syn::{
+    Expr, ExprLit, File, FnArg, Item, ItemTrait, Path, PathArguments, PathSegment, ReturnType,
+    TraitItem, TraitItemMethod, Type,
+};
 
 use super::symbol_tree::*;
 use super::utils::*;
 
-
 pub struct RRefedFinder {
     /// All the fully qualified path of all `RRef`ed types.
-    type_list:  HashSet<Type>,
+    type_list: HashSet<Type>,
     /// The root module node, i.e. the `crate` node.
     symbol_tree: SymbolTree,
     /// The current module node that's used in recursive calls.
@@ -36,22 +39,30 @@ impl RRefedFinder {
         for item in items.iter() {
             match item {
                 Item::Mod(md) => {
-                    println!("Finding RRefed for module {:?}", md.ident);
+                    info!("Finding RRefed for module {:?}", md.ident);
                     if let Some((_, items)) = &md.content {
                         // Push a frame
                         let current_node = self.current_module.borrow();
                         let next_frame = current_node.children.get(&md.ident);
-                        let next_frame = next_frame.expect(&format!("Module {:?} not found in {:#?}", md.ident, current_node));
+                        let next_frame = next_frame.expect(&format!(
+                            "Module {:?} not found in {:#?}",
+                            md.ident, current_node
+                        ));
                         let next_frame = match &next_frame.borrow().terminal {
                             Terminal::Module(md) => md.clone(),
-                            _ => panic!("Expecting a module, not a symbol.")
+                            _ => panic!("Expecting a module, not a symbol."),
                         };
                         drop(current_node);
                         self.current_module = next_frame;
                         // Recurse into the new frame.
                         self.find_rrefed_recursive(items);
                         // Pop a frame
-                        let parent_module = self.current_module.borrow().node.borrow().get_parent_module();
+                        let parent_module = self
+                            .current_module
+                            .borrow()
+                            .node
+                            .borrow()
+                            .get_parent_module();
                         self.current_module = parent_module;
                     }
                 }
@@ -96,7 +107,7 @@ impl RRefedFinder {
     fn find_rrefed_in_fnarg(&mut self, arg: &FnArg) {
         if let FnArg::Typed(ty) = arg {
             self.find_rrefed_in_type(&ty.ty);
-        } 
+        }
     }
 
     fn find_rrefed_in_returntype(&mut self, rtn: &ReturnType) {
@@ -121,7 +132,7 @@ impl RRefedFinder {
                         let (path, node) = self.resolve_path(&path.path);
                         let node = node.expect(&format!("Array length experssion must not contains paths from external crates.\nType: {:?}\nForeign path: {:?}", ty, path));
                         let lit = match &node.borrow().terminal {
-                            Terminal::Literal(lit) => Expr::Lit(ExprLit{
+                            Terminal::Literal(lit) => Expr::Lit(ExprLit {
                                 attrs: vec![],
                                 lit: lit.clone(),
                             }),
@@ -129,21 +140,21 @@ impl RRefedFinder {
                         };
                         lit
                     }
-                    _ => unimplemented!()
+                    _ => unimplemented!(),
                 };
 
                 // Put the resolved type into the type list.
                 let resolved_type = Type::Array(resolved_type);
                 self.type_list.insert(resolved_type.clone());
                 resolved_type
-            },
+            }
             Type::Path(ty) => {
                 let mut resolved_type = ty.clone();
                 resolved_type.path = self.resolve_path(&ty.path).0;
                 let resolved_type = Type::Path(resolved_type);
                 self.type_list.insert(resolved_type.clone());
                 resolved_type
-            },
+            }
             Type::Tuple(ty) => {
                 let mut resolved_type = ty.clone();
                 for elem in &mut resolved_type.elems {
@@ -152,7 +163,7 @@ impl RRefedFinder {
                 let resolved_type = Type::Tuple(resolved_type);
                 self.type_list.insert(resolved_type.clone());
                 resolved_type
-            },
+            }
             Type::BareFn(x) => unimplemented!("{:#?}", x),
             Type::Group(x) => unimplemented!("{:#?}", x),
             Type::ImplTrait(x) => unimplemented!("{:#?}", x),
@@ -211,7 +222,13 @@ impl RRefedFinder {
 
         // If the path starts with `::` and doesn't come from `crate` or `super, or it comes from
         // some unknown module(external module), we know that it's already fully qualified.
-        if path.leading_colon.is_some() && !crate_or_super || current_node.borrow().children.get(&path_segments[0].ident).is_none() {
+        if path.leading_colon.is_some() && !crate_or_super
+            || current_node
+                .borrow()
+                .children
+                .get(&path_segments[0].ident)
+                .is_none()
+        {
             return (path.clone(), None);
         }
 
@@ -224,7 +241,12 @@ impl RRefedFinder {
 
             let current_node_ref = current_node.borrow();
             let next_node = current_node_ref.children.get(&path_segment.ident);
-            let next_node = next_node.expect(&format!("Unable to find {:?} in {:#?}", path_segment.ident, current_node)).clone();
+            let next_node = next_node
+                .expect(&format!(
+                    "Unable to find {:?} in {:#?}",
+                    path_segment.ident, current_node
+                ))
+                .clone();
             drop(current_node_ref);
             let next_node = next_node.borrow();
             current_node = match &next_node.terminal {
@@ -232,26 +254,35 @@ impl RRefedFinder {
                     assert!(next_node.public);
                     md.clone()
                 }
-                _ => panic!("Resolving {:#?} for {:#?}. Node {:#?} is a symbol and cannot have child.", path_segment, current_node.borrow().node.borrow().path, next_node),
+                _ => panic!(
+                    "Resolving {:#?} for {:#?}. Node {:#?} is a symbol and cannot have child.",
+                    path_segment,
+                    current_node.borrow().node.borrow().path,
+                    next_node
+                ),
             };
         }
 
         let current_node_ref = current_node.borrow();
         let final_node = current_node_ref.children.get(&final_segment.ident);
-        let final_node = final_node.expect(&format!("Unable to find {:?} in {:#?}", final_segment.ident, current_node_ref)).clone();
+        let final_node = final_node
+            .expect(&format!(
+                "Unable to find {:?} in {:#?}",
+                final_segment.ident, current_node_ref
+            ))
+            .clone();
         drop(current_node_ref);
         let final_node_ref = final_node.borrow();
         let mut resolved_path = match &final_node_ref.terminal {
             Terminal::Module(md) => panic!("Expecting a type, but found a module. {:?}", md),
             Terminal::None => panic!("Path not resolved: {:?}", final_node_ref.path),
-            _ => {
-                idents_to_path(&final_node_ref.path)
-            }
+            _ => idents_to_path(&final_node_ref.path),
         };
         drop(final_node_ref);
 
         // Resolve the generics.
-        resolved_path.segments.last_mut().unwrap().arguments = self.resolve_path_arguments(&final_segment.arguments);
+        resolved_path.segments.last_mut().unwrap().arguments =
+            self.resolve_path_arguments(&final_segment.arguments);
         (resolved_path, Some(final_node.clone()))
     }
 
@@ -261,7 +292,7 @@ impl RRefedFinder {
         if let PathArguments::AngleBracketed(generic) = &mut resolved_arguments {
             for arg in generic.args.iter_mut() {
                 match arg {
-                    syn::GenericArgument::Lifetime(_) => { /* noop */ },
+                    syn::GenericArgument::Lifetime(_) => { /* noop */ }
                     syn::GenericArgument::Type(ty) => *ty = self.find_rrefed_in_type(ty),
                     syn::GenericArgument::Binding(x) => unimplemented!("{:#?}", x),
                     syn::GenericArgument::Constraint(x) => unimplemented!("{:#?}", x),
@@ -279,11 +310,8 @@ impl RRefedFinder {
                             }
                             _ => unimplemented!(),
                         };
-                        *expr = Expr::Lit(ExprLit{
-                            attrs: vec![],
-                            lit,
-                        });
-                    },
+                        *expr = Expr::Lit(ExprLit { attrs: vec![], lit });
+                    }
                 }
             }
         }

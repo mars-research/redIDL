@@ -1,35 +1,43 @@
-use syn::{Item, Type, parse_quote};
+use log::info;
+use syn::{parse_quote, Item, Type};
 
 pub mod rrefed_finder;
-pub mod type_resolver;
 pub mod symbol_tree;
+pub mod type_resolver;
 mod utils;
 
 #[cfg(test)]
-mod rrefed_finder_test;
-#[cfg(test)]
 mod e2e_test;
+#[cfg(test)]
+mod rrefed_finder_test;
 
 pub fn generate_typeid(ast: &mut syn::File) {
     // Resolve types
+    info!("Resolving types");
     let type_resolver = type_resolver::TypeResolver::new();
     let symbol_tree = type_resolver.resolve_types(&ast);
 
     // Find all `RRef`ed types
+    info!("Finding `RRef`ed types");
     let rref_finder = rrefed_finder::RRefedFinder::new(symbol_tree.clone());
     let rrefed_types: Vec<Type> = rref_finder.find_rrefed(&ast).into_iter().collect();
 
     // Generate code
-    let impls: Vec<Item> = rrefed_types.iter().enumerate().map(|(i, ty)| {
-        let i = i as u64;
-        Item::Impl(parse_quote!{
-            impl TypeIdentifiable for #ty {
-                fn type_id() -> u64 {
-                    #i
+    info!("Generating `TypeIdentifiable`");
+    let impls: Vec<Item> = rrefed_types
+        .iter()
+        .enumerate()
+        .map(|(i, ty)| {
+            let i = i as u64;
+            Item::Impl(parse_quote! {
+                impl TypeIdentifiable for #ty {
+                    fn type_id() -> u64 {
+                        #i
+                    }
                 }
-            }
+            })
         })
-    }).collect();
+        .collect();
 
     // Remove the existing typeid module
     ast.items.retain(|item| {
@@ -82,7 +90,7 @@ pub fn generate_typeid(ast: &mut syn::File) {
                 }
 
                 fn populate_drop_map(&mut self) {
-                    #(self.add_type::<#rrefed_types>();)* 
+                    #(self.add_type::<#rrefed_types>();)*
                 }
             }
             // END Generated DropMap

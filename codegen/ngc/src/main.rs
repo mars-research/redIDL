@@ -1,24 +1,29 @@
 #![feature(option_expect_none, box_syntax, box_patterns, option_unwrap_none)]
 
-mod proxy;
-mod utils;
 mod domain_creation;
+mod proxy;
 mod type_resolution;
+mod utils;
 
 #[macro_use]
 extern crate derivative;
 
-use std::{collections::HashSet, env};
 use std::error::Error;
 use std::fs::File;
 use std::io::Read;
 use std::process::Command;
+use std::{collections::HashSet, env};
 
 use clap::{App, Arg, ArgMatches};
+use log::info;
 use quote::quote;
-use syn::{Item, ItemMod, Meta, NestedMeta, Type, parse_quote};
+use syn::{parse_quote, Item, ItemMod, Meta, NestedMeta, Type};
 
 fn main() {
+    // Initialze logging
+    env_logger::init();
+
+    // Parse arguments and run the compiler
     let matches = App::new("Proxy Generator")
         .version(env!("CARGO_PKG_VERSION"))
         .about("RedIDL New Generation Codegenerator.")
@@ -40,8 +45,11 @@ fn main() {
 }
 
 fn run(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    let input_path = args.value_of("INPUT").unwrap();
-    let output_path = args.value_of("OUTPUT").unwrap();
+    // let input_path = args.value_of("INPUT").unwrap();
+    // let output_path = args.value_of("OUTPUT").unwrap();
+    let input_path = "/home/tjhu/workspace/redleaf/interface/generated/merged.rs";
+    let output_path = "out.rs";
+    info!("Running redIDL on {}", input_path);
     let mut file = File::open(&input_path).unwrap();
     let mut content = String::new();
     file.read_to_string(&mut content).unwrap();
@@ -50,7 +58,7 @@ fn run(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     // Clean the file
     remove_prelude(&mut ast);
-    
+
     // Generate code in place
     generate(&mut ast);
 
@@ -64,7 +72,7 @@ fn run(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         .arg(format!("rustfmt {}", &output_path))
         .output();
 
-    println!("Output is written to {}", output_path);
+    info!("Output is written to {}", output_path);
 
     Ok(())
 }
@@ -96,11 +104,13 @@ fn generate_recurse(items: &mut Vec<syn::Item>, module_path: &mut Vec<syn::Ident
                 }
 
                 // Attempt to generate domain creation
-                if let Some(generated) = crate::domain_creation::generate_domain_creation(tr, module_path) {
+                if let Some(generated) =
+                    crate::domain_creation::generate_domain_creation(tr, module_path)
+                {
                     generated_items.extend(generated);
                 }
             }
-            _ => {},
+            _ => {}
         }
     }
 
