@@ -48,3 +48,6 @@ tree of a particular interface, It's relatively easy to proc-macros to generate 
 that we want so that's what we started with. However, serious problems arise as we try to have it
 figure out the import paths. Since it does not know 
 
+
+# Known issues
+* Reference to types in structs are not supported. For example, `Self::T` or `Foo::T` is not supported.
