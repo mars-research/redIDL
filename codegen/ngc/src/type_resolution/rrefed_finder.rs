@@ -47,8 +47,8 @@ impl RRefedFinder {
                             md.ident,
                             current_node
                         );
-                        let next_frame = match &next_frame.borrow().terminal {
-                            Terminal::Module(md) => md.clone(),
+                        let next_frame = match &next_frame.borrow().terminal.as_ref().expect("Expecting a module; found unresolved.").definition {
+                            Definition::Module(md) => md.clone(),
                             _ => panic!("Expecting a module, not a symbol."),
                         };
                         drop(current_node);
@@ -130,8 +130,8 @@ impl RRefedFinder {
                     Expr::Path(path) => {
                         let (path, node) = self.resolve_path(&path.path, generic_args);
                         let node = crate::expect!(node, "Array length experssion must not contains paths from external crates.\nType: {:?}\nForeign path: {:?}", ty, path);
-                        let lit = match &node.borrow().terminal {
-                            Terminal::Literal(lit) => Expr::Lit(ExprLit {
+                        let lit = match &node.borrow().terminal.as_ref().expect("expecting a literal; found unresolved").definition {
+                            Definition::Literal(lit) => Expr::Lit(ExprLit {
                                 attrs: vec![],
                                 lit: lit.clone(),
                             }),
@@ -209,102 +209,112 @@ impl RRefedFinder {
     }
 
     fn find_rrefed_in_struct(&mut self, node: &SymbolTreeNode, args: &PathArguments) {
-        if let Terminal::Type(Item::Struct(st)) = &node.borrow().terminal {
-            debug!("Finding nested `RRef`ed in struct {:?}", st.ident);
-
-            // Sanity checks.
-            let args = match &args {
-                PathArguments::None => return,
-                PathArguments::Parenthesized(x) => unimplemented!("{:#?}", x),
-                PathArguments::AngleBracketed(args) => args,
-            };
-            let args = &args.args;
-            assert_eq!(st.generics.params.len(), args.len());
-
-            // Change the scope to where the struct is defined
-            let original_scope = self.current_module.clone();
-            // TODO: walk the path and find struct module;
-            let struct_scope = unimplemented!();
-            self.current_module = struct_scope;
-            trace!("To find `RRef`ed in struct {:?}, the scope is changed to {:?}", st.ident, self.current_module.borrow().path);
-
-            // Create a mapping between the generic params and their corresponding arguments.
-            // For example, for definition `RRef<T>` and usage `RRef<u8>`, we map `T` to `u8`.
-            let generic_map: HashMap<Ident, GenericResult> = st
-                .generics
-                .params
-                .iter()
-                .zip(args)
-                .map(|(param, arg)| {
-                    let param = match param {
-                        syn::GenericParam::Lifetime(x) => unimplemented!("{:#?}", x),
-                        syn::GenericParam::Const(c) => c.ident.clone(),
-                        syn::GenericParam::Type(param) => param.ident.clone(),
-                    };
-
-                    let arg = match arg {
-                        syn::GenericArgument::Lifetime(x) => unimplemented!("{:#?}", x),
-                        syn::GenericArgument::Binding(x) => unimplemented!("{:#?}", x),
-                        syn::GenericArgument::Constraint(x) => unimplemented!("{:#?}", x),
-                        syn::GenericArgument::Const(expr) => match expr {
-                            Expr::Array(x) => unimplemented!("{:#?}", x),
-                            Expr::Assign(x) => unimplemented!("{:#?}", x),
-                            Expr::AssignOp(x) => unimplemented!("{:#?}", x),
-                            Expr::Async(x) => unimplemented!("{:#?}", x),
-                            Expr::Await(x) => unimplemented!("{:#?}", x),
-                            Expr::Binary(x) => unimplemented!("{:#?}", x),
-                            Expr::Block(x) => unimplemented!("{:#?}", x),
-                            Expr::Box(x) => unimplemented!("{:#?}", x),
-                            Expr::Break(x) => unimplemented!("{:#?}", x),
-                            Expr::Call(x) => unimplemented!("{:#?}", x),
-                            Expr::Cast(x) => unimplemented!("{:#?}", x),
-                            Expr::Closure(x) => unimplemented!("{:#?}", x),
-                            Expr::Continue(x) => unimplemented!("{:#?}", x),
-                            Expr::Field(x) => unimplemented!("{:#?}", x),
-                            Expr::ForLoop(x) => unimplemented!("{:#?}", x),
-                            Expr::Group(x) => unimplemented!("{:#?}", x),
-                            Expr::If(x) => unimplemented!("{:#?}", x),
-                            Expr::Index(x) => unimplemented!("{:#?}", x),
-                            Expr::Let(x) => unimplemented!("{:#?}", x),
-                            Expr::Lit(lit) => GenericResult::Literal(lit.lit.clone()),
-                            Expr::Loop(x) => unimplemented!("{:#?}", x),
-                            Expr::Macro(x) => unimplemented!("{:#?}", x),
-                            Expr::Match(x) => unimplemented!("{:#?}", x),
-                            Expr::MethodCall(x) => unimplemented!("{:#?}", x),
-                            Expr::Paren(x) => unimplemented!("{:#?}", x),
-                            Expr::Path(x) => unimplemented!("{:#?}", x),
-                            Expr::Range(x) => unimplemented!("{:#?}", x),
-                            Expr::Reference(x) => unimplemented!("{:#?}", x),
-                            Expr::Repeat(x) => unimplemented!("{:#?}", x),
-                            Expr::Return(x) => unimplemented!("{:#?}", x),
-                            Expr::Struct(x) => unimplemented!("{:#?}", x),
-                            Expr::Try(x) => unimplemented!("{:#?}", x),
-                            Expr::TryBlock(x) => unimplemented!("{:#?}", x),
-                            Expr::Tuple(x) => unimplemented!("{:#?}", x),
-                            Expr::Type(x) => unimplemented!("{:#?}", x),
-                            Expr::Unary(x) => unimplemented!("{:#?}", x),
-                            Expr::Unsafe(x) => unimplemented!("{:#?}", x),
-                            Expr::Verbatim(x) => unimplemented!("{:#?}", x),
-                            Expr::While(x) => unimplemented!("{:#?}", x),
-                            Expr::Yield(x) => unimplemented!("{:#?}", x),
-                            Expr::__Nonexhaustive => unimplemented!(),
-                        }
-                        syn::GenericArgument::Type(arg) => GenericResult::Type(arg.clone()),
-                    };
-
-                    (param, arg)
-                })
-                .collect();
-            for field in &st.fields {
-                // Resolve field type
-                let resolved_type = self.find_rrefed_in_type(&field.ty, Some(&generic_map)).ty();
-                debug!("Field {:?} of struct {:?} is resolved to {:?}", field.ident, st.ident, resolved_type);
-                self.type_list.insert(resolved_type);
+        // Noop if the node is not a terminal struct node.
+        let node_ref = node.borrow();
+        let st = if let Some(terminal) = &node_ref.terminal {
+            if let Definition::Type(Item::Struct(st)) = &terminal.definition {
+                st
+            } else {
+                return;
             }
+        } else {
+            return;
+        };
+        debug!("Finding nested `RRef`ed in struct {:?}", st.ident);
 
-            // Restore back to the current scope.
-            self.current_module = original_scope;
+        // Sanity checks.
+        let args = match &args {
+            PathArguments::None => return,
+            PathArguments::Parenthesized(x) => unimplemented!("{:#?}", x),
+            PathArguments::AngleBracketed(args) => args,
+        };
+        let args = &args.args;
+        assert_eq!(st.generics.params.len(), args.len());
+
+        // Change the scope to where the struct is defined
+        let original_scope = self.current_module.clone();
+        // TODO: walk the path and find struct module;
+        let struct_scope = unimplemented!();
+        self.current_module = struct_scope;
+        trace!("To find `RRef`ed in struct {:?}, the scope is changed to {:?}", st.ident, self.current_module.borrow().path);
+
+        // Create a mapping between the generic params and their corresponding arguments.
+        // For example, for definition `RRef<T>` and usage `RRef<u8>`, we map `T` to `u8`.
+        let generic_map: HashMap<Ident, GenericResult> = st
+            .generics
+            .params
+            .iter()
+            .zip(args)
+            .map(|(param, arg)| {
+                let param = match param {
+                    syn::GenericParam::Lifetime(x) => unimplemented!("{:#?}", x),
+                    syn::GenericParam::Const(c) => c.ident.clone(),
+                    syn::GenericParam::Type(param) => param.ident.clone(),
+                };
+
+                let arg = match arg {
+                    syn::GenericArgument::Lifetime(x) => unimplemented!("{:#?}", x),
+                    syn::GenericArgument::Binding(x) => unimplemented!("{:#?}", x),
+                    syn::GenericArgument::Constraint(x) => unimplemented!("{:#?}", x),
+                    syn::GenericArgument::Const(expr) => match expr {
+                        Expr::Array(x) => unimplemented!("{:#?}", x),
+                        Expr::Assign(x) => unimplemented!("{:#?}", x),
+                        Expr::AssignOp(x) => unimplemented!("{:#?}", x),
+                        Expr::Async(x) => unimplemented!("{:#?}", x),
+                        Expr::Await(x) => unimplemented!("{:#?}", x),
+                        Expr::Binary(x) => unimplemented!("{:#?}", x),
+                        Expr::Block(x) => unimplemented!("{:#?}", x),
+                        Expr::Box(x) => unimplemented!("{:#?}", x),
+                        Expr::Break(x) => unimplemented!("{:#?}", x),
+                        Expr::Call(x) => unimplemented!("{:#?}", x),
+                        Expr::Cast(x) => unimplemented!("{:#?}", x),
+                        Expr::Closure(x) => unimplemented!("{:#?}", x),
+                        Expr::Continue(x) => unimplemented!("{:#?}", x),
+                        Expr::Field(x) => unimplemented!("{:#?}", x),
+                        Expr::ForLoop(x) => unimplemented!("{:#?}", x),
+                        Expr::Group(x) => unimplemented!("{:#?}", x),
+                        Expr::If(x) => unimplemented!("{:#?}", x),
+                        Expr::Index(x) => unimplemented!("{:#?}", x),
+                        Expr::Let(x) => unimplemented!("{:#?}", x),
+                        Expr::Lit(lit) => GenericResult::Literal(lit.lit.clone()),
+                        Expr::Loop(x) => unimplemented!("{:#?}", x),
+                        Expr::Macro(x) => unimplemented!("{:#?}", x),
+                        Expr::Match(x) => unimplemented!("{:#?}", x),
+                        Expr::MethodCall(x) => unimplemented!("{:#?}", x),
+                        Expr::Paren(x) => unimplemented!("{:#?}", x),
+                        Expr::Path(x) => unimplemented!("{:#?}", x),
+                        Expr::Range(x) => unimplemented!("{:#?}", x),
+                        Expr::Reference(x) => unimplemented!("{:#?}", x),
+                        Expr::Repeat(x) => unimplemented!("{:#?}", x),
+                        Expr::Return(x) => unimplemented!("{:#?}", x),
+                        Expr::Struct(x) => unimplemented!("{:#?}", x),
+                        Expr::Try(x) => unimplemented!("{:#?}", x),
+                        Expr::TryBlock(x) => unimplemented!("{:#?}", x),
+                        Expr::Tuple(x) => unimplemented!("{:#?}", x),
+                        Expr::Type(x) => unimplemented!("{:#?}", x),
+                        Expr::Unary(x) => unimplemented!("{:#?}", x),
+                        Expr::Unsafe(x) => unimplemented!("{:#?}", x),
+                        Expr::Verbatim(x) => unimplemented!("{:#?}", x),
+                        Expr::While(x) => unimplemented!("{:#?}", x),
+                        Expr::Yield(x) => unimplemented!("{:#?}", x),
+                        Expr::__Nonexhaustive => unimplemented!(),
+                    }
+                    syn::GenericArgument::Type(arg) => GenericResult::Type(arg.clone()),
+                };
+
+                (param, arg)
+            })
+            .collect();
+        for field in &st.fields {
+            // Resolve field type
+            let resolved_type = self.find_rrefed_in_type(&field.ty, Some(&generic_map)).ty();
+            debug!("Field {:?} of struct {:?} is resolved to {:?}", field.ident, st.ident, resolved_type);
+            self.type_list.insert(resolved_type);
         }
+
+        // Restore back to the current scope.
+        self.current_module = original_scope;
+
     }
 
     /// Resolve path in the current module and return the resolved path and its corresponding node,
@@ -364,8 +374,8 @@ impl RRefedFinder {
             .clone();
             drop(current_node_ref);
             let next_node = next_node.borrow();
-            current_node = match &next_node.terminal {
-                Terminal::Module(md) => {
+            current_node = match &next_node.terminal.as_ref().expect("Expecting module, found unresolved").definition {
+                Definition::Module(md) => {
                     assert!(next_node.public);
                     md.clone()
                 }
@@ -389,9 +399,8 @@ impl RRefedFinder {
         .clone();
         drop(current_node_ref);
         let final_node_ref = final_node.borrow();
-        let mut resolved_path = match &final_node_ref.terminal {
-            Terminal::Module(md) => panic!("Expecting a type, but found a module. {:?}", md),
-            Terminal::None => panic!("Path not resolved: {:?}", final_node_ref.path),
+        let mut resolved_path = match &final_node_ref.terminal.as_ref().unwrap().definition {
+            Definition::Module(md) => panic!("Expecting a type, but found a module. {:?}", md),
             _ => idents_to_path(&final_node_ref.path),
         };
         drop(final_node_ref);
@@ -423,8 +432,8 @@ impl RRefedFinder {
                             syn::Expr::Path(path) => {
                                 let (path, node) = self.resolve_path(&path.path, generic_args);
                                 let node = crate::expect!(node, "Generic experssion must not contains paths from external crates.\nPath arguments: {:?}\nForeign path: {:?}", arguments, path);
-                                let lit = match &node.borrow().terminal {
-                                    Terminal::Literal(lit) => lit.clone(),
+                                let lit = match &node.borrow().terminal.as_ref().unwrap().definition {
+                                    Definition::Literal(lit) => lit.clone(),
                                     _ => panic!("All generic constants must be able to resolved to a compile time constant.\nPath: {:?}\nNode: {:?}", path, node.borrow()),
                                 };
                                 lit

@@ -28,19 +28,19 @@ impl SymbolTree {
         let mut root = SymbolTreeNode::new(
             true,
             None,
-            Terminal::None,
+            None,
             true,
             vec![format_ident!("crate")],
         );
-        root.borrow_mut().terminal =
-            Terminal::Module(Module::new(&format_ident!("crate"), root.clone()));
+        let definition = Definition::Module(Module::new(&format_ident!("crate"), root.clone()));
+        root.borrow_mut().terminal = Some(Terminal::new(root.clone(), definition));
         Self { root }
     }
 
     /// Returns the root of the tree in as a `SymbolTreeNode`.
     pub fn root_module(&self) -> Module {
-        match &self.root.borrow().terminal {
-            Terminal::Module(md) => md.clone(),
+        match &self.root.borrow().terminal.as_ref().unwrap().definition {
+            Definition::Module(md) => md.clone(),
             _ => panic!(),
         }
     }

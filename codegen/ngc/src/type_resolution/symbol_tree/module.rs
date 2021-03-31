@@ -33,12 +33,22 @@ pub struct ModuleInner {
 }
 
 /// Generate default mappings for builtin types like u8.
-macro_rules! get_default_mapping {
+macro_rules! generate_builtin_mapping {
     ($($arg:literal),*) => (
-        vec![
-            $( (format_ident!($arg), SymbolTreeNode::new(false, None, Terminal::Builtin, true, vec![format_ident!($arg)])), )*
-        ].into_iter().collect()
+        {
+            let mut hashmap = HashMap::new();
 
+            $( 
+                {
+                    let mut node = SymbolTreeNode::new(false, None, None, true, vec![format_ident!($arg)]);
+                    node.borrow_mut().terminal = Some(Terminal::new(node.clone(), Definition::Builtin));
+                    hashmap.insert(format_ident!($arg), node);
+                }
+            )*
+
+
+            hashmap
+        }
     );
 }
 
@@ -48,7 +58,7 @@ impl ModuleInner {
         Self {
             node,
             path,
-            children: get_default_mapping!(
+            children: generate_builtin_mapping!(
                 "bool", "u8", "u16", "u32", "u64", "i8", "i16", "i32", "i64", "usize", "Option"
             ),
         }
@@ -83,19 +93,18 @@ impl Module {
 
     /// Create a new child module and returns a reference to it.
     pub fn create_module(&mut self, ident: &Ident, vis: &Visibility) -> Module {
-        // Attempt to insert a new node into children. Noop if there already exist one with the same
-        // ident.
         let mut path = Self::borrow(self).node.borrow().path.clone();
         path.push(ident.clone());
         let mut new_node = SymbolTreeNode::new(
             is_public(vis),
             Some((Self::borrow(self).node.clone())),
-            Terminal::None,
+            None,
             true,
             path,
         );
         let new_module = Self::new(ident, new_node.clone());
-        new_node.borrow_mut().terminal = Terminal::Module(new_module.clone());
+        let definition = Definition::Module(new_module.clone());
+        new_node.borrow_mut().terminal = Some(Terminal::new(new_node.clone(), definition));
         self.borrow_mut()
             .children
             .insert(ident.clone(), new_node)
