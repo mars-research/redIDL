@@ -76,9 +76,11 @@ impl SymbolTreeNode {
 }
 
 /// A terminal node.
-#[derive(Debug, Clone)]
+#[derive(Derivative, Clone)]
+#[derivative(Debug)]
 pub struct Terminal {
     /// The node where the terminal node is defined.
+    #[derivative(Debug = "ignore")]
     pub node: SymbolTreeNode,
     /// The definition of the terminal node.
     pub definition: Definition,
