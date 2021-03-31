@@ -41,7 +41,7 @@ impl TypeResolver {
     }
 
     /// Returns the resolved/terminal path of `module_item`.
-    fn resolve_relative_paths_recursive_for_module_item(&mut self, node: SymbolTreeNode) {
+    fn resolve_relative_paths_recursive_for_symbol_tree_node(&mut self, node: SymbolTreeNode) {
         let mut node_ref = node.borrow();
         debug!(
             target: RELATIVE_PATH_TARGET,
@@ -85,7 +85,6 @@ impl TypeResolver {
 
         // Walk the relative path and try resolving the path.
         // Save the previous node because we there's no way to know the parent of a type currently.
-        let mut previous_node = None;
         let mut current_node = match node_ref.leading_colon {
             true => self.symbol_tree.root.clone(),
             false => node.clone(),
@@ -122,7 +121,6 @@ impl TypeResolver {
                     let next_node = md.children.get(path_segment);
                     let next_node = crate::expect!(next_node, "When resolving {:?}, ident {:?} is not found in {:#?}", node_ref.path, path_segment, md);
                     assert!(next_node.borrow().public);
-                    previous_node = Some(current_node.clone());
                     current_node = next_node.clone();
                 }
                 _ => panic!()
@@ -134,7 +132,7 @@ impl TypeResolver {
         // If the node is a module, we can treat it as terminal. It's up to the user to
         // resolve their types that in the module.
         if current_node.borrow().terminal.is_none() {
-            self.resolve_relative_paths_recursive_for_module_item(current_node.clone());
+            self.resolve_relative_paths_recursive_for_symbol_tree_node(current_node.clone());
         }
         assert!(
             current_node.borrow().terminal.is_some(),
@@ -166,7 +164,7 @@ impl TypeResolver {
             module.borrow().path[module.borrow().path.len() - 1]
         );
         for (_, child) in &module.borrow().children {
-            self.resolve_relative_paths_recursive_for_module_item(child.clone());
+            self.resolve_relative_paths_recursive_for_symbol_tree_node(child.clone());
         }
     }
 
@@ -278,7 +276,7 @@ impl TypeResolver {
             // e.g. `a::*`. This is banned because pulling the depencies in and analyze them is not
             // within the scope of this project.
             syn::UseTree::Glob(tree) => {
-                panic!("Use globe is disallowed in IDL. For example, you cannot do `use foo::*`. You did: {:#?}, {:?}", tree, path)
+                panic!("Use globe is disallowed in IDL. For example, you cannot do `use foo::*`. Violating code: {:#?}, {:?}", tree, path)
             }
             // e.g. `{b::{Barc}, Car}`.
             syn::UseTree::Group(tree) => {

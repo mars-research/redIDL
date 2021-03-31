@@ -8,17 +8,16 @@
             "type": "lldb",
             "request": "launch",
             "name": "Cargo launch",
-            "cargo": {
-                "args": [
-                    "build",
-                    "--lib"
-                ]
-            },
-            "program": "${cargo:program}",
+            "program": "${workspaceFolder}/target/debug/ngc",
+            "cwd": "${workspaceFolder}",
             "args": [
                 "../codegen-old/cleanser/test.rs",
                 "/dev/null"
             ],
+            "env": {
+                "RUST_LOG": "TRACE",
+            },
+            "preLaunchTask": "rust: cargo build"
         },
     ]
 }

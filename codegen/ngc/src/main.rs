@@ -46,10 +46,8 @@ fn main() {
 }
 
 fn run(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    // let input_path = args.value_of("INPUT").unwrap();
-    // let output_path = args.value_of("OUTPUT").unwrap();
-    let input_path = "/home/tjhu/workspace/redleaf/interface/generated/merged.rs";
-    let output_path = "out.rs";
+    let input_path = args.value_of("INPUT").unwrap();
+    let output_path = args.value_of("OUTPUT").unwrap();
     info!("Running redIDL on {}", input_path);
     let mut file = File::open(&input_path).unwrap();
     let mut content = String::new();
