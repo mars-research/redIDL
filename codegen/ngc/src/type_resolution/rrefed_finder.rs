@@ -1,6 +1,6 @@
-use log::{debug, info};
+use log::{debug, info, trace};
 use mem::replace;
-use std::collections::{HashMap, HashSet};
+use std::{borrow::Borrow, collections::{HashMap, HashSet}};
 use std::mem;
 use syn::{Expr, ExprLit, File, FnArg, Ident, Item, ItemTrait, Lit, Path, PathArguments, PathSegment, ReturnType, TraitItem, TraitItemMethod, Type};
 
@@ -36,7 +36,7 @@ impl RRefedFinder {
         for item in items.iter() {
             match item {
                 Item::Mod(md) => {
-                    info!("Finding RRefed for module {:?}", md.ident);
+                    info!("Finding `RRef`ed for module {:?}", md.ident);
                     if let Some((_, items)) = &md.content {
                         // Push a frame
                         let current_node = self.current_module.borrow();
@@ -128,7 +128,7 @@ impl RRefedFinder {
                 resolved_type.len = match &ty.len {
                     Expr::Lit(lit) => Expr::Lit(lit.clone()),
                     Expr::Path(path) => {
-                        let (path, node) = self.resolve_path(&path.path);
+                        let (path, node) = self.resolve_path(&path.path, generic_args);
                         let node = crate::expect!(node, "Array length experssion must not contains paths from external crates.\nType: {:?}\nForeign path: {:?}", ty, path);
                         let lit = match &node.borrow().terminal {
                             Terminal::Literal(lit) => Expr::Lit(ExprLit {
@@ -161,7 +161,7 @@ impl RRefedFinder {
                 // Resolve the path and insert resolved type into the type_list.
                 let mut resolved_type = ty.clone();
                 // TODO(tianjiao): resolve generic here
-                resolved_type.path = self.resolve_path(&ty.path).0;
+                resolved_type.path = self.resolve_path(&ty.path, generic_args).0;
                 let resolved_type = Type::Path(resolved_type);
                 self.type_list.insert(resolved_type.clone());
                 GenericResult::Type(resolved_type)
@@ -195,7 +195,7 @@ impl RRefedFinder {
                 for bound in resolved_type.bounds.iter_mut() {
                     match bound {
                         syn::TypeParamBound::Trait(tr) => {
-                            tr.path = self.resolve_path(&tr.path).0;
+                            tr.path = self.resolve_path(&tr.path, generic_args).0;
                         }
                         syn::TypeParamBound::Lifetime(_) => {}
                     }
@@ -208,14 +208,8 @@ impl RRefedFinder {
         }
     }
 
-    fn find_rrefed_in_struct(&mut self, terminal: &Terminal, args: &PathArguments) {
-        // let args = match args {
-        //     PathArguments::None => return,
-        //     PathArguments::Parenthesized(x) => unimplemented!("{:#?}", x),
-        //     PathArguments::AngleBracketed(args) => args,
-        // };
-
-        if let Terminal::Type(Item::Struct(st)) = terminal {
+    fn find_rrefed_in_struct(&mut self, node: &SymbolTreeNode, args: &PathArguments) {
+        if let Terminal::Type(Item::Struct(st)) = &node.borrow().terminal {
             debug!("Finding nested `RRef`ed in struct {:?}", st.ident);
 
             // Sanity checks.
@@ -226,6 +220,13 @@ impl RRefedFinder {
             };
             let args = &args.args;
             assert_eq!(st.generics.params.len(), args.len());
+
+            // Change the scope to where the struct is defined
+            let original_scope = self.current_module.clone();
+            // TODO: walk the path and find struct module;
+            let struct_scope = unimplemented!();
+            self.current_module = struct_scope;
+            trace!("To find `RRef`ed in struct {:?}, the scope is changed to {:?}", st.ident, self.current_module.borrow().path);
 
             // Create a mapping between the generic params and their corresponding arguments.
             // For example, for definition `RRef<T>` and usage `RRef<u8>`, we map `T` to `u8`.
@@ -294,13 +295,15 @@ impl RRefedFinder {
                     (param, arg)
                 })
                 .collect();
-
             for field in &st.fields {
-                // TODO(tianjiao): add the resolved type to typelist
+                // Resolve field type
                 let resolved_type = self.find_rrefed_in_type(&field.ty, Some(&generic_map)).ty();
                 debug!("Field {:?} of struct {:?} is resolved to {:?}", field.ident, st.ident, resolved_type);
                 self.type_list.insert(resolved_type);
             }
+
+            // Restore back to the current scope.
+            self.current_module = original_scope;
         }
     }
 
@@ -308,7 +311,8 @@ impl RRefedFinder {
     /// if it doesn't come from an external crate.
     /// If the path is resolved into a struct, it will recursively goes in the struct to add any
     /// `RRef`ed member variables.
-    fn resolve_path(&mut self, path: &Path) -> (Path, Option<SymbolTreeNode>) {
+    fn resolve_path(&mut self, path: &Path, generic_args: Option<&HashMap<Ident, GenericResult>>) -> (Path, Option<SymbolTreeNode>) {
+        trace!("Resolving path {:?} with generic_args {:?}", path, generic_args);
         let mut current_node = self.current_module.clone();
         let mut path_segments: Vec<PathSegment> = path.segments.iter().map(|x| x.clone()).collect();
         let crate_or_super = {
@@ -331,13 +335,14 @@ impl RRefedFinder {
 
         // If the path starts with `::` and doesn't come from `crate` or `super, or it comes from
         // some unknown module(external module), we know that it's already fully qualified.
-        if path.leading_colon.is_some() && !crate_or_super
-            || current_node
+        if (path.leading_colon.is_some() && !crate_or_super)
+            || (current_node
                 .borrow()
                 .children
                 .get(&path_segments[0].ident)
-                .is_none()
+                .is_none())
         {
+            trace!("Path {:?} is a foreign type; no further resolution is required.", path);
             return (path.clone(), None);
         }
 
@@ -393,29 +398,30 @@ impl RRefedFinder {
 
         // Resolve the generic arguments.
         resolved_path.segments.last_mut().unwrap().arguments =
-            self.resolve_path_arguments(&final_segment.arguments);
+            self.resolve_path_arguments(&final_segment.arguments, generic_args);
 
         // Find nested `RRef`ed types
-        self.find_rrefed_in_struct(&final_node.borrow().terminal, &resolved_path.segments.last().unwrap().arguments);
+        self.find_rrefed_in_struct(&final_node, &resolved_path.segments.last().unwrap().arguments);
 
+        trace!("Path {:?} is resolved to {:?}.", path, resolved_path);
         (resolved_path, Some(final_node.clone()))
     }
 
     /// Resolve any types or constants in the path argument and returns the resolved path arguments back.
-    fn resolve_path_arguments(&mut self, arguments: &PathArguments) -> PathArguments {
+    fn resolve_path_arguments(&mut self, arguments: &PathArguments, generic_args: Option<&HashMap<Ident, GenericResult>>) -> PathArguments {
         let mut resolved_arguments = arguments.clone();
         if let PathArguments::AngleBracketed(generic) = &mut resolved_arguments {
             for arg in generic.args.iter_mut() {
                 match arg {
                     syn::GenericArgument::Lifetime(_) => { /* noop */ }
-                    syn::GenericArgument::Type(ty) => *ty = self.find_rrefed_in_type(ty, None).ty(),
+                    syn::GenericArgument::Type(ty) => *ty = self.find_rrefed_in_type(ty, generic_args).ty(),
                     syn::GenericArgument::Binding(x) => unimplemented!("{:#?}", x),
                     syn::GenericArgument::Constraint(x) => unimplemented!("{:#?}", x),
                     syn::GenericArgument::Const(expr) => {
                         let lit = match expr {
                             syn::Expr::Lit(lit) => lit.lit.clone(),
                             syn::Expr::Path(path) => {
-                                let (path, node) = self.resolve_path(&path.path);
+                                let (path, node) = self.resolve_path(&path.path, generic_args);
                                 let node = crate::expect!(node, "Generic experssion must not contains paths from external crates.\nPath arguments: {:?}\nForeign path: {:?}", arguments, path);
                                 let lit = match &node.borrow().terminal {
                                     Terminal::Literal(lit) => lit.clone(),
