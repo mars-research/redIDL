@@ -57,12 +57,6 @@ impl TypeResolver {
         if let Some(terminal) = &node_ref.terminal {
             match &terminal.definition {
                 Definition::Module(item) => {
-                    // If the module is a path modifier, noop. 
-                    if PATH_MODIFIERS.get(&node_ref.ident.to_string()).is_some() {
-                        trace!("Encountered path modifiler {:?}; noop", node_ref.ident);
-                        return;
-                    } 
-
                     // Go to the children frame and do recursive call.
                     let old_frame = self.current_module.clone();
                     self.current_module = item.clone();
@@ -158,12 +152,19 @@ impl TypeResolver {
     /// Resolve all relative paths generated `resolve_types_recursive` by into terminal
     /// paths.
     fn resolve_relative_paths_recursive_for_module(&mut self, module: Module) {
+        let module_path = &module.borrow().path;
         info!(
             target: RELATIVE_PATH_TARGET,
             "Resolving relative path for module {:?}",
-            module.borrow().path[module.borrow().path.len() - 1]
+            module_path
         );
-        for (_, child) in module.borrow().iter() {
+        for (ident, child) in module.borrow().iter() {
+            trace!("Resolving relative path for symbol {:?} in module {:?}", ident, module_path);
+            // If the module is a path modifier, noop. 
+            if PATH_MODIFIERS.get(&ident.to_string()).is_some() {
+                trace!("Encountered path modifiler {:?}; noop", ident);
+                continue;
+            } 
             self.resolve_relative_paths_recursive_for_symbol_tree_node(child.clone());
         }
     }
