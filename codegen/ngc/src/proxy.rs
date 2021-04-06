@@ -4,7 +4,7 @@ use quote::{format_ident, quote};
 use syn::punctuated::Punctuated;
 use syn::{parse_quote, FnArg, Ident, Item, ItemFn, ItemTrait, Token, TraitItem, TraitItemMethod};
 
-const INTERFACE_ATTR: &'static str = "interface";
+const INTERFACE_ATTR: &str = "interface";
 
 pub fn generate_proxy(input: &mut ItemTrait, _module_path: &Vec<Ident>) -> Option<Vec<Item>> {
     if !has_attribute!(input, INTERFACE_ATTR) {

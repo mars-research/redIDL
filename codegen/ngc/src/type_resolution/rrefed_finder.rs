@@ -1,6 +1,6 @@
 use log::{debug, info, trace};
-use mem::replace;
-use std::mem;
+
+
 use std::{
     borrow::Borrow,
     collections::{HashMap, HashSet},
@@ -27,7 +27,7 @@ impl RRefedFinder {
         let symbol_tree_node = symbol_tree.root_module();
         Self {
             type_list: HashSet::new(),
-            symbol_tree: symbol_tree,
+            symbol_tree,
             current_module: symbol_tree_node,
         }
     }
@@ -398,7 +398,7 @@ impl RRefedFinder {
             generic_args
         );
         let mut current_node = self.current_module.clone();
-        let mut path_segments: Vec<PathSegment> = path.segments.iter().map(|x| x.clone()).collect();
+        let mut path_segments: Vec<PathSegment> = path.segments.iter().cloned().collect();
 
         // Walk the module tree and resolve the type.
         let final_segment = path_segments.remove(path_segments.len() - 1);

@@ -19,7 +19,7 @@ pub fn generate_typeid(ast: &mut syn::File) {
 
     // Find all `RRef`ed types
     info!("Finding `RRef`ed types");
-    let rref_finder = rrefed_finder::RRefedFinder::new(symbol_tree.clone());
+    let rref_finder = rrefed_finder::RRefedFinder::new(symbol_tree);
     let rrefed_types: Vec<Type> = rref_finder.find_rrefed(&ast).into_iter().collect();
 
     // Generate code

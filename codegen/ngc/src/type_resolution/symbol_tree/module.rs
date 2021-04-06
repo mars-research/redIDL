@@ -4,18 +4,16 @@ use std::{
     cell::{Ref, RefCell, RefMut},
     collections::HashMap,
     fmt::Debug,
-    hash::Hash,
-    ops::{Deref, DerefMut},
     rc::Rc,
 };
 use std::{collections::HashSet, fmt};
 
 use super::super::utils::is_public;
-use log::{debug, trace};
-use proc_macro2::Span;
+use log::{trace};
+
 use quote::format_ident;
 use syn::{
-    Ident, Item, ItemFn, ItemStruct, ItemTrait, Lit, LitInt, PathSegment, VisPublic, Visibility,
+    Ident, Visibility,
 };
 
 #[derive(Clone)]
@@ -54,7 +52,7 @@ macro_rules! insert_builtin_mapping {
             $(
                 {
                     let ident = format_ident!($arg);
-                    let mut node = SymbolTreeNode::new(ident.clone(), false, None, None, true, vec![format_ident!($arg)]);
+                    let node = SymbolTreeNode::new(ident.clone(), false, None, None, true, vec![format_ident!($arg)]);
                     node.borrow_mut().terminal = Some(Terminal::new(node.clone(), Definition::Builtin));
                     $hashmap.insert(ident, node);
                 }
@@ -64,7 +62,7 @@ macro_rules! insert_builtin_mapping {
 }
 
 impl ModuleInner {
-    fn new(ident: &Ident, node: SymbolTreeNode) -> Self {
+    fn new(_ident: &Ident, node: SymbolTreeNode) -> Self {
         let path = node.borrow().path.clone();
 
         let mut module = Self {
@@ -74,8 +72,8 @@ impl ModuleInner {
         };
 
         // Insert mappings for builtin types.
-       insert_builtin_mapping!(
-        module, "bool", "u8", "u16", "u32", "u64", "i8", "i16", "i32", "i64", "usize", "Option"
+        insert_builtin_mapping!(
+            module, "bool", "u8", "u16", "u32", "u64", "i8", "i16", "i32", "i64", "usize", "Option"
         );
 
         // Insert mappings for relative path.
@@ -114,7 +112,7 @@ impl ModuleInner {
         );
         node
     }
-    
+
     // Return a iterator over its children.
     pub fn iter(&self) -> std::collections::hash_map::Iter<Ident, SymbolTreeNode> {
         self.children.iter()
@@ -137,10 +135,10 @@ impl Module {
     pub fn create_module(&mut self, ident: &Ident, vis: &Visibility) -> Module {
         let mut path = Self::borrow(self).node.borrow().path.clone();
         path.push(ident.clone());
-        let mut new_node = SymbolTreeNode::new(
+        let new_node = SymbolTreeNode::new(
             ident.clone(),
             is_public(vis),
-            Some((Self::borrow(self).node.clone())),
+            Some(Self::borrow(self).node.clone()),
             None,
             true,
             path,

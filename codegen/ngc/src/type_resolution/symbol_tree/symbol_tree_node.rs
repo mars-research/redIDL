@@ -3,14 +3,11 @@ use super::module::Module;
 use std::{
     borrow::Borrow,
     cell::{Ref, RefCell, RefMut},
-    collections::HashMap,
-    hash::Hash,
-    ops::{Deref, DerefMut},
     rc::Rc,
 };
 
-use proc_macro2::Span;
-use quote::format_ident;
+
+
 use syn::{
     Ident, Item, ItemFn, ItemStruct, ItemTrait, Lit, LitInt, PathSegment, VisPublic, Visibility,
 };

@@ -6,7 +6,7 @@ use syn::{
     TraitItemMethod,
 };
 
-const DOMAIN_CREATION_ATTR: &'static str = "domain_creation";
+const DOMAIN_CREATION_ATTR: &str = "domain_creation";
 
 pub fn generate_domain_creation(
     input: &mut ItemTrait,
@@ -24,7 +24,7 @@ pub fn generate_domain_creation(
         None
     });
 
-    let domain_path = crate::expect!(
+    let _domain_path = crate::expect!(
         domain_path,
         "Domain path not found for {} definition {}",
         DOMAIN_CREATION_ATTR,
@@ -46,8 +46,8 @@ pub fn generate_domain_creation(
         .collect();
 
     // Filter out `&self` and `&mut self`
-    let cleaned_trait_methods = {
-        let mut cleaned_trait_methods = trait_methods.clone();
+    let _cleaned_trait_methods = {
+        let mut cleaned_trait_methods = trait_methods;
         for method in &mut cleaned_trait_methods {
             let mut args = Punctuated::<FnArg, Token![,]>::new();
             for arg in &method.sig.inputs {
@@ -68,7 +68,7 @@ fn generate_domain_creation_one(
     domain_ident: &Ident,
     domain_path: &str,
     method: &TraitItemMethod,
-    cleaned_method: &TraitItemMethod,
+    _cleaned_method: &TraitItemMethod,
 ) -> syn::Item {
     let domain_ident_str = domain_ident.to_string();
     let method_ident = &method.sig.ident;

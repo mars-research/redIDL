@@ -13,7 +13,7 @@ use std::error::Error;
 use std::fs::File;
 use std::io::Read;
 use std::process::Command;
-use std::{collections::HashSet, env};
+use std::{env};
 
 use clap::{App, Arg, ArgMatches};
 use log::info;
@@ -142,7 +142,7 @@ fn remove_prelude(ast: &mut syn::File) {
         // #[prelude_import]
         // use core::prelude::v1::*;
         // ```
-        const PRELUDE_IMPORT_ATTR: &'static str = "prelude_import";
+        const PRELUDE_IMPORT_ATTR: &str = "prelude_import";
         if let Item::Use(item) = item {
             if has_attribute!(item, PRELUDE_IMPORT_ATTR) {
                 return false;
