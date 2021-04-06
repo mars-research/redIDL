@@ -6,7 +6,7 @@ use syn::{parse_quote, FnArg, Ident, Item, ItemFn, ItemTrait, Token, TraitItem, 
 
 const INTERFACE_ATTR: &str = "interface";
 
-pub fn generate_proxy(input: &mut ItemTrait, _module_path: &Vec<Ident>) -> Option<Vec<Item>> {
+pub fn generate_proxy(input: &mut ItemTrait, _module_path: &[Ident]) -> Option<Vec<Item>> {
     if !has_attribute!(input, INTERFACE_ATTR) {
         return None;
     }

@@ -178,7 +178,7 @@ impl TypeResolver {
 
     /// Recursively add relative paths and terminal nodes into the module. The relative paths
     /// need to be resolved into terminal paths later.
-    fn resolve_types_recursive(&mut self, items: &Vec<syn::Item>) {
+    fn resolve_types_recursive(&mut self, items: &[syn::Item]) {
         for og_item in items.iter() {
             match og_item {
                 Item::Const(item) => {

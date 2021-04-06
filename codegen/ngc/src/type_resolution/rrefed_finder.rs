@@ -38,7 +38,7 @@ impl RRefedFinder {
         self.type_list
     }
 
-    fn find_rrefed_recursive(&mut self, items: &Vec<syn::Item>) {
+    fn find_rrefed_recursive(&mut self, items: &[syn::Item]) {
         for item in items.iter() {
             match item {
                 Item::Mod(md) => {

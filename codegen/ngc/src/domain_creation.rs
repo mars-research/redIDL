@@ -10,7 +10,7 @@ const DOMAIN_CREATION_ATTR: &str = "domain_creation";
 
 pub fn generate_domain_creation(
     input: &mut ItemTrait,
-    _module_path: &Vec<Ident>,
+    _module_path: &[Ident],
 ) -> Option<Vec<Item>> {
     if !has_attribute!(input, DOMAIN_CREATION_ATTR) {
         return None;

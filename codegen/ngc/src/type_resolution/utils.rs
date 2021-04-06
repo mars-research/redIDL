@@ -17,7 +17,7 @@ pub fn is_public(vis: &Visibility) -> bool {
 }
 
 /// Construct a path from a list of identifiers.
-pub fn idents_to_path(path_segments: &Vec<Ident>) -> Path {
+pub fn idents_to_path(path_segments: &[Ident]) -> Path {
     let segments = Punctuated::from_iter(path_segments.iter().map(|ident| PathSegment {
         ident: ident.clone(),
         arguments: PathArguments::None,
