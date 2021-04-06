@@ -1,8 +1,14 @@
 use log::{debug, info, trace};
 use mem::replace;
-use std::{borrow::Borrow, collections::{HashMap, HashSet}};
 use std::mem;
-use syn::{Expr, ExprLit, File, FnArg, GenericArgument, Ident, Item, ItemTrait, Lit, Path, PathArguments, PathSegment, ReturnType, TraitItem, TraitItemMethod, Type};
+use std::{
+    borrow::Borrow,
+    collections::{HashMap, HashSet},
+};
+use syn::{
+    Expr, ExprLit, File, FnArg, GenericArgument, Ident, Item, ItemTrait, Lit, Path, PathArguments,
+    PathSegment, ReturnType, TraitItem, TraitItemMethod, Type,
+};
 
 use super::symbol_tree::*;
 use super::utils::*;
@@ -40,14 +46,20 @@ impl RRefedFinder {
                     if let Some((_, items)) = &md.content {
                         // Push a frame
                         let current_node = self.current_module.borrow();
-                        let next_frame = current_node.children.get(&md.ident);
+                        let next_frame = current_node.get(&md.ident);
                         let next_frame = crate::expect!(
                             next_frame,
                             "Module {:?} not found in {:#?}",
                             md.ident,
                             current_node
                         );
-                        let next_frame = match &next_frame.borrow().terminal.as_ref().expect("Expecting a module; found unresolved.").definition {
+                        let next_frame = match &next_frame
+                            .borrow()
+                            .terminal
+                            .as_ref()
+                            .expect("Expecting a module; found unresolved.")
+                            .definition
+                        {
                             Definition::Module(md) => md.clone(),
                             _ => panic!("Expecting a module, not a symbol."),
                         };
@@ -117,7 +129,11 @@ impl RRefedFinder {
 
     /// Resolve type, put the type and the nested types, if there's any, into the typelist, and
     /// return the resolved type.
-    fn find_rrefed_in_type(&mut self, ty: &Type, generic_args: Option<&HashMap<Ident, GenericResult>>) -> GenericResult {
+    fn find_rrefed_in_type(
+        &mut self,
+        ty: &Type,
+        generic_args: Option<&HashMap<Ident, GenericResult>>,
+    ) -> GenericResult {
         match ty {
             Type::Array(ty) => {
                 // Resolve the type.
@@ -132,14 +148,22 @@ impl RRefedFinder {
                         let mut rtn = None;
 
                         // If the path is a generic argument, return it's mapping
-                        if let Some(ident) = path.get_ident() {    
+                        if let Some(ident) = path.get_ident() {
                             if let Some(generic_args) = generic_args {
                                 if let Some(generic_param) = generic_args.get(ident) {
                                     match generic_param {
-                                        GenericResult::Type(x) => panic!("Expecting a generic literal, not a type. {:?}", x),
-                                        GenericResult::Literal(lit) => rtn = Some(Expr::Lit(ExprLit{attrs:vec![], lit:lit.clone()})),
+                                        GenericResult::Type(x) => panic!(
+                                            "Expecting a generic literal, not a type. {:?}",
+                                            x
+                                        ),
+                                        GenericResult::Literal(lit) => {
+                                            rtn = Some(Expr::Lit(ExprLit {
+                                                attrs: vec![],
+                                                lit: lit.clone(),
+                                            }))
+                                        }
                                     }
-                                } 
+                                }
                             }
                         }
 
@@ -147,7 +171,13 @@ impl RRefedFinder {
                         if rtn.is_none() {
                             let (path, node) = self.resolve_path(&path, generic_args);
                             let node = crate::expect!(node, "Array length experssion must not contains paths from external crates.\nType: {:?}\nForeign path: {:?}", ty, path);
-                            let lit = match &node.borrow().terminal.as_ref().expect("expecting a literal; found unresolved").definition {
+                            let lit = match &node
+                                .borrow()
+                                .terminal
+                                .as_ref()
+                                .expect("expecting a literal; found unresolved")
+                                .definition
+                            {
                                 Definition::Literal(lit) => Expr::Lit(ExprLit {
                                     attrs: vec![],
                                     lit: lit.clone(),
@@ -174,10 +204,10 @@ impl RRefedFinder {
                     if let Some(path) = ty.path.get_ident() {
                         if let Some(resolved_type) = generic_args.get(path) {
                             return resolved_type.clone();
-                        } 
+                        }
                     }
                 }
-                
+
                 // Resolve the path and insert resolved type into the type_list.
                 let mut resolved_type = ty.clone();
                 // TODO(tianjiao): resolve generic here
@@ -202,11 +232,17 @@ impl RRefedFinder {
             Type::Macro(_) => panic!("There's shouldn't be unexpended any macro at this point."),
             Type::Never(x) => unimplemented!("{:#?}", x),
             Type::Paren(x) => unimplemented!("{:#?}", x),
-            Type::Ptr(ptr) => GenericResult::Type(self.find_rrefed_in_type(&ptr.elem, generic_args).ty()),
-            Type::Reference(reference) => GenericResult::Type(self.find_rrefed_in_type(&reference.elem, generic_args).ty()),
+            Type::Ptr(ptr) => {
+                GenericResult::Type(self.find_rrefed_in_type(&ptr.elem, generic_args).ty())
+            }
+            Type::Reference(reference) => {
+                GenericResult::Type(self.find_rrefed_in_type(&reference.elem, generic_args).ty())
+            }
             Type::Slice(slice) => {
                 let mut resolved_type = slice.clone();
-                *resolved_type.elem = self.find_rrefed_in_type(&resolved_type.elem, generic_args).ty();
+                *resolved_type.elem = self
+                    .find_rrefed_in_type(&resolved_type.elem, generic_args)
+                    .ty();
                 let resolved_type = Type::Slice(resolved_type);
                 GenericResult::Type(resolved_type)
             }
@@ -258,7 +294,11 @@ impl RRefedFinder {
         // TODO: walk the path and find struct module;
         let struct_scope = terminal.node.borrow().get_parent_module();
         self.current_module = struct_scope;
-        trace!("To find `RRef`ed in struct {:?}, the scope is changed to {:?}", st.ident, self.current_module.borrow().path);
+        trace!(
+            "To find `RRef`ed in struct {:?}, the scope is changed to {:?}",
+            st.ident,
+            self.current_module.borrow().path
+        );
 
         // Create a mapping between the generic params and their corresponding arguments.
         // For example, for definition `RRef<T>` and usage `RRef<u8>`, we map `T` to `u8`.
@@ -320,7 +360,7 @@ impl RRefedFinder {
                         Expr::While(x) => unimplemented!("{:#?}", x),
                         Expr::Yield(x) => unimplemented!("{:#?}", x),
                         Expr::__Nonexhaustive => unimplemented!(),
-                    }
+                    },
                     syn::GenericArgument::Type(arg) => GenericResult::Type(arg.clone()),
                 };
 
@@ -330,13 +370,15 @@ impl RRefedFinder {
         for field in &st.fields {
             // Resolve field type
             let resolved_type = self.find_rrefed_in_type(&field.ty, Some(&generic_map)).ty();
-            debug!("Field {:?} of struct {:?} is resolved to {:?}", field.ident, st.ident, resolved_type);
+            debug!(
+                "Field {:?} of struct {:?} is resolved to {:?}",
+                field.ident, st.ident, resolved_type
+            );
             self.type_list.insert(resolved_type);
         }
 
         // Restore back to the current scope.
         self.current_module = original_scope;
-
     }
 
     /// Resolve path in the current module and return the resolved path and its corresponding node,
@@ -345,22 +387,18 @@ impl RRefedFinder {
     /// manner without calling this function.
     /// If the path is resolved into a struct, it will recursively goes in the struct to add any
     /// `RRef`ed member variables.
-    fn resolve_path(&mut self, path: &Path, generic_args: Option<&HashMap<Ident, GenericResult>>) -> (Path, Option<SymbolTreeNode>) {
-        trace!("Resolving path {:?} with generic_args {:?}", path, generic_args);
+    fn resolve_path(
+        &mut self,
+        path: &Path,
+        generic_args: Option<&HashMap<Ident, GenericResult>>,
+    ) -> (Path, Option<SymbolTreeNode>) {
+        trace!(
+            "Resolving path {:?} with generic_args {:?}",
+            path,
+            generic_args
+        );
         let mut current_node = self.current_module.clone();
         let mut path_segments: Vec<PathSegment> = path.segments.iter().map(|x| x.clone()).collect();
-
-        // Check to see if the path starts with modifiers
-        if path_segments[0].ident == "crate" {
-            current_node = self.symbol_tree.root_module();
-            path_segments.remove(0);
-        } else if path_segments[0].ident == "super" {
-            let parent_module = current_node.borrow().node.borrow().get_parent_module();
-            current_node = parent_module;
-            path_segments.remove(0);
-        } else if path_segments[0].ident == "self" {
-            path_segments.remove(0); 
-        } 
 
         // Walk the module tree and resolve the type.
         let final_segment = path_segments.remove(path_segments.len() - 1);
@@ -370,7 +408,7 @@ impl RRefedFinder {
             }
 
             let current_node_ref = current_node.borrow();
-            let next_node = current_node_ref.children.get(&path_segment.ident);
+            let next_node = current_node_ref.get(&path_segment.ident);
             let next_node = crate::expect!(
                 next_node,
                 "Unable to find {:?} in {:#?}",
@@ -380,7 +418,12 @@ impl RRefedFinder {
             .clone();
             drop(current_node_ref);
             let next_node = next_node.borrow();
-            current_node = match &next_node.terminal.as_ref().expect("Expecting module, found unresolved").definition {
+            current_node = match &next_node
+                .terminal
+                .as_ref()
+                .expect("Expecting module, found unresolved")
+                .definition
+            {
                 Definition::Module(md) => {
                     assert!(next_node.public);
                     md.clone()
@@ -395,7 +438,7 @@ impl RRefedFinder {
         }
 
         let current_node_ref = current_node.borrow();
-        let final_node = current_node_ref.children.get(&final_segment.ident);
+        let final_node = current_node_ref.get(&final_segment.ident);
         let final_node = crate::expect!(
             final_node,
             "Unable to find {:?} in {:#?}",
@@ -416,27 +459,34 @@ impl RRefedFinder {
             self.resolve_path_arguments(&final_segment.arguments, generic_args);
 
         // Find nested `RRef`ed types
-        self.find_rrefed_in_struct(&final_node, &resolved_path.segments.last().unwrap().arguments);
+        self.find_rrefed_in_struct(
+            &final_node,
+            &resolved_path.segments.last().unwrap().arguments,
+        );
 
         trace!("Path {:?} is resolved to {:?}.", path, resolved_path);
         (resolved_path, Some(final_node.clone()))
     }
 
     /// Resolve any types or constants in the path argument and returns the resolved path arguments back.
-    fn resolve_path_arguments(&mut self, arguments: &PathArguments, generic_args: Option<&HashMap<Ident, GenericResult>>) -> PathArguments {
+    fn resolve_path_arguments(
+        &mut self,
+        arguments: &PathArguments,
+        generic_args: Option<&HashMap<Ident, GenericResult>>,
+    ) -> PathArguments {
         let mut resolved_arguments = arguments.clone();
         if let PathArguments::AngleBracketed(generic) = &mut resolved_arguments {
             for arg in generic.args.iter_mut() {
                 trace!("Resolving generic argument {:?}", arg);
                 let resolved_arg: Option<GenericArgument> = match arg {
-                    syn::GenericArgument::Lifetime(_) => { 
+                    syn::GenericArgument::Lifetime(_) => {
                         /* noop */
                         None
-                    },
+                    }
                     syn::GenericArgument::Type(ty) => {
                         // It is possible that `ty` is resolved into a constant literal.
                         Some(self.find_rrefed_in_type(ty, generic_args).into())
-                    },
+                    }
                     syn::GenericArgument::Binding(x) => unimplemented!("{:#?}", x),
                     syn::GenericArgument::Constraint(x) => unimplemented!("{:#?}", x),
                     syn::GenericArgument::Const(expr) => {
@@ -453,13 +503,16 @@ impl RRefedFinder {
                             }
                             _ => unimplemented!(),
                         };
-                        Some(GenericArgument::Const(Expr::Lit(ExprLit { attrs: vec![], lit })))
+                        Some(GenericArgument::Const(Expr::Lit(ExprLit {
+                            attrs: vec![],
+                            lit,
+                        })))
                     }
                 };
 
                 if let Some(resolved_arg) = resolved_arg {
                     *arg = resolved_arg;
-                } 
+                }
             }
         }
         resolved_arguments
@@ -478,14 +531,14 @@ impl GenericResult {
     fn ty(self) -> Type {
         match self {
             GenericResult::Type(ty) => ty,
-            GenericResult::Literal(lit) => panic!("Expecting a type, but found {:#?}", lit)
+            GenericResult::Literal(lit) => panic!("Expecting a type, but found {:#?}", lit),
         }
     }
 
     fn lit(self) -> Lit {
         match self {
             GenericResult::Literal(lit) => lit,
-            GenericResult::Type(ty) => panic!("Expecting a literal, but found {:#?}", ty)
+            GenericResult::Type(ty) => panic!("Expecting a literal, but found {:#?}", ty),
         }
     }
 }
@@ -494,7 +547,9 @@ impl Into<GenericArgument> for GenericResult {
     fn into(self) -> GenericArgument {
         match self {
             GenericResult::Type(ty) => GenericArgument::Type(ty),
-            GenericResult::Literal(lit) => GenericArgument::Const(Expr::Lit(ExprLit{attrs: vec![], lit})),
+            GenericResult::Literal(lit) => {
+                GenericArgument::Const(Expr::Lit(ExprLit { attrs: vec![], lit }))
+            }
         }
     }
 }

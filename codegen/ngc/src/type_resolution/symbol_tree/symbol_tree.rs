@@ -25,14 +25,9 @@ pub struct SymbolTree {
 
 impl SymbolTree {
     pub fn new() -> Self {
-        let mut root = SymbolTreeNode::new(
-            true,
-            None,
-            None,
-            true,
-            vec![format_ident!("crate")],
-        );
-        let definition = Definition::Module(Module::new(&format_ident!("crate"), root.clone()));
+        let root_ident = &format_ident!("crate");
+        let mut root = SymbolTreeNode::new(root_ident.clone(), true, None, None, true, vec![format_ident!("crate")]);
+        let definition = Definition::Module(Module::new(root_ident, root.clone()));
         root.borrow_mut().terminal = Some(Terminal::new(root.clone(), definition));
         Self { root }
     }

@@ -3,10 +3,12 @@ use super::*;
 use std::{
     cell::{Ref, RefCell, RefMut},
     collections::HashMap,
+    fmt::Debug,
     hash::Hash,
     ops::{Deref, DerefMut},
     rc::Rc,
 };
+use std::{collections::HashSet, fmt};
 
 use super::super::utils::is_public;
 use log::{debug, trace};
@@ -16,8 +18,7 @@ use syn::{
     Ident, Item, ItemFn, ItemStruct, ItemTrait, Lit, LitInt, PathSegment, VisPublic, Visibility,
 };
 
-#[derive(Derivative, Clone)]
-#[derivative(Debug)]
+#[derive(Clone)]
 pub struct ModuleInner {
     /// Absolute path to the module.
     /// This is the same as `self.node.path`.
@@ -25,29 +26,39 @@ pub struct ModuleInner {
     pub path: Vec<Ident>,
 
     /// The node which this module lives.
-    #[derivative(Debug = "ignore")]
     pub node: SymbolTreeNode,
 
     /// All items in this module, including symbols and modules.
-    pub children: HashMap<Ident, SymbolTreeNode>,
+    children: HashMap<Ident, SymbolTreeNode>,
 }
 
-/// Generate default mappings for builtin types like u8.
-macro_rules! generate_builtin_mapping {
-    ($($arg:literal),*) => (
-        {
-            let mut hashmap = HashMap::new();
+impl fmt::Debug for ModuleInner {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // Print the children's keys only.
+        // There's should be a more effient way to do it than turning it into a set but I just
+        // couldn't get the formatter to work.
+        let children_keys: HashSet<_> = self.children.keys().collect();
+        let result = f
+            .debug_struct("Module")
+            .field("path", &self.path)
+            .field("children", &children_keys)
+            .finish();
+        result
+    }
+}
 
-            $( 
+/// Generate insertions of default mappings for builtin types like u8.
+macro_rules! insert_builtin_mapping {
+    ($hashmap:path,$($arg:literal),*) => (
+        {
+            $(
                 {
-                    let mut node = SymbolTreeNode::new(false, None, None, true, vec![format_ident!($arg)]);
+                    let ident = format_ident!($arg);
+                    let mut node = SymbolTreeNode::new(ident.clone(), false, None, None, true, vec![format_ident!($arg)]);
                     node.borrow_mut().terminal = Some(Terminal::new(node.clone(), Definition::Builtin));
-                    hashmap.insert(format_ident!($arg), node);
+                    $hashmap.insert(ident, node);
                 }
             )*
-
-
-            hashmap
         }
     );
 }
@@ -55,27 +66,58 @@ macro_rules! generate_builtin_mapping {
 impl ModuleInner {
     fn new(ident: &Ident, node: SymbolTreeNode) -> Self {
         let path = node.borrow().path.clone();
-        Self {
-            node,
+
+        let mut module = Self {
+            node: node.clone(),
             path,
-            children: generate_builtin_mapping!(
-                "bool", "u8", "u16", "u32", "u64", "i8", "i16", "i32", "i64", "usize", "Option"
-            ),
-        }
+            children: HashMap::new(),
+        };
+
+        // Insert mappings for builtin types.
+       insert_builtin_mapping!(
+        module, "bool", "u8", "u16", "u32", "u64", "i8", "i16", "i32", "i64", "usize", "Option"
+        );
+
+        // Insert mappings for relative path.
+        module.insert(format_ident!("self"), node.clone());
+        module.insert(
+            format_ident!("super"),
+            match node.borrow().parent.as_ref() {
+                Some(parent) => parent.clone(),
+                None => node.clone(),
+            },
+        );
+        module.insert(format_ident!("crate"), node.root());
+
+        module
     }
 
-    pub fn clear(&mut self) {
-        self.children.clear();
-    }
-
-    pub fn insert(&mut self, ident: &Ident, node: SymbolTreeNode) -> Option<SymbolTreeNode> {
+    // Insert a new node to this module.
+    pub fn insert(&mut self, ident: Ident, node: SymbolTreeNode) -> Option<SymbolTreeNode> {
         trace!(
             "Adding {:?} to module {:?} with node {:?}",
             ident,
             self.path,
             node
         );
-        self.children.insert(ident.clone(), node)
+        self.children.insert(ident, node)
+    }
+
+    // Retrive a node from this module.
+    pub fn get(&self, ident: &Ident) -> Option<&SymbolTreeNode> {
+        let node = self.children.get(ident);
+        trace!(
+            "Getting {:?} from module {:?} with node {:?}",
+            ident,
+            self.path,
+            node
+        );
+        node
+    }
+    
+    // Return a iterator over its children.
+    pub fn iter(&self) -> std::collections::hash_map::Iter<Ident, SymbolTreeNode> {
+        self.children.iter()
     }
 }
 
@@ -96,6 +138,7 @@ impl Module {
         let mut path = Self::borrow(self).node.borrow().path.clone();
         path.push(ident.clone());
         let mut new_node = SymbolTreeNode::new(
+            ident.clone(),
             is_public(vis),
             Some((Self::borrow(self).node.clone())),
             None,

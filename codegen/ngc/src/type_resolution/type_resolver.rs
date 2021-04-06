@@ -1,5 +1,5 @@
 use super::{symbol_tree::*, utils::is_public};
-use log::{debug, info};
+use log::{debug, info, trace};
 use mem::replace;
 use std::mem;
 use std::rc::Rc;
@@ -12,6 +12,8 @@ use syn::{
     spanned::Spanned, File, FnArg, Ident, Item, ItemTrait, ItemUse, Path, PathSegment, ReturnType,
     TraitItem, TraitItemMethod, Type, UseTree, Visibility,
 };
+use crate::type_resolution::symbol_tree::PATH_MODIFIERS;
+use crate::expect;
 
 const DEFINITION_POPULATION_TARGET: &'static str = "definition_population";
 const RELATIVE_PATH_TARGET: &'static str = "relative_path_resolution";
@@ -43,17 +45,24 @@ impl TypeResolver {
     /// Returns the resolved/terminal path of `module_item`.
     fn resolve_relative_paths_recursive_for_symbol_tree_node(&mut self, node: SymbolTreeNode) {
         let mut node_ref = node.borrow();
-        debug!(
+        trace!(
             target: RELATIVE_PATH_TARGET,
             "Resolving relative path for {:?} in {:?}",
-            node_ref.path,
+            node_ref,
             self.current_module.borrow().path
         );
-        /// If the node is a non-module terminal node, nothing need to be done here.
-        /// If the node is a module, recursively go into the module and resolve relative paths there.
+
+        // If the node is a non-module terminal node, nothing need to be done here.
+        // If the node is a module, recursively go into the module and resolve relative paths there.
         if let Some(terminal) = &node_ref.terminal {
             match &terminal.definition {
                 Definition::Module(item) => {
+                    // If the module is a path modifier, noop. 
+                    if PATH_MODIFIERS.get(&node_ref.ident.to_string()).is_some() {
+                        trace!("Encountered path modifiler {:?}; noop", node_ref.ident);
+                        return;
+                    } 
+
                     // Go to the children frame and do recursive call.
                     let old_frame = self.current_module.clone();
                     self.current_module = item.clone();
@@ -87,43 +96,34 @@ impl TypeResolver {
         // Save the previous node because we there's no way to know the parent of a type currently.
         let mut current_node = match node_ref.leading_colon {
             true => self.symbol_tree.root.clone(),
-            false => node.clone(),
+            false => self.current_module.borrow().node.clone(),
         };
-        let path = {
-            let mut path = node_ref.path.clone();
-            if path[0].to_string() == "crate" {
-                current_node = self.symbol_tree.root.clone();
-                path.remove(0);
-            } else if path[0].to_string() == "super" {
-                current_node = self
-                    .current_module
-                    .borrow()
-                    .node
-                    .borrow()
-                    .parent
-                    .as_ref()
-                    .unwrap()
-                    .clone();
-                path.remove(0);
-            } else if path[0].to_string() == "self" {
-                path.remove(0);
-            }
-            path
-        };
-        for path_segment in &path {
+ 
+        for path_segment in &node_ref.path {
+            trace!("Resolving path segment {:?}", path_segment);
             // Borrow it seperately so that we can assign to `current_node` later.
             let terminal = current_node.borrow().terminal.clone();
 
-            match &terminal.as_ref().unwrap().definition {
-                Definition::Type(_) => panic!("Resolving {:#?} for {:#?}. Node {:#?} is a symbol and cannot have child.", path_segment, node_ref.path, current_node),
+            // Resolve the path_segment into a node.
+            match &expect!(terminal.as_ref(), "Expecting a module, found non-terminal: {:?}", current_node).definition {
+                Definition::Type(_) => panic!(
+                    "Resolving {:#?} for {:#?}. Node {:#?} is a symbol and cannot have child.",
+                    path_segment, node_ref.path, current_node
+                ),
                 Definition::Module(md) => {
                     let md = md.borrow();
-                    let next_node = md.children.get(path_segment);
-                    let next_node = crate::expect!(next_node, "When resolving {:?}, ident {:?} is not found in {:#?}", node_ref.path, path_segment, md);
+                    let next_node = md.get(path_segment);
+                    let next_node = crate::expect!(
+                        next_node,
+                        "When resolving {:?}, ident {:?} is not found in {:#?}",
+                        node_ref.path,
+                        path_segment,
+                        md
+                    );
                     assert!(next_node.borrow().public);
                     current_node = next_node.clone();
                 }
-                _ => panic!()
+                _ => panic!(),
             }
         }
 
@@ -163,7 +163,7 @@ impl TypeResolver {
             "Resolving relative path for module {:?}",
             module.borrow().path[module.borrow().path.len() - 1]
         );
-        for (_, child) in &module.borrow().children {
+        for (_, child) in module.borrow().iter() {
             self.resolve_relative_paths_recursive_for_symbol_tree_node(child.clone());
         }
     }
@@ -180,6 +180,7 @@ impl TypeResolver {
                         syn::Expr::Lit(lit) => {
                             // Create a new node.
                             let mut node = SymbolTreeNode::new(
+                                item.ident.clone(),
                                 is_public(&item.vis),
                                 Some(self.current_module.borrow().node.clone()),
                                 None,
@@ -187,11 +188,14 @@ impl TypeResolver {
                                 path,
                             );
                             // Update its terminal
-                            node.borrow_mut().terminal = Some(Terminal::new(node.clone(), Definition::Literal(lit.lit.clone())));
+                            node.borrow_mut().terminal = Some(Terminal::new(
+                                node.clone(),
+                                Definition::Literal(lit.lit.clone()),
+                            ));
                             // Insert the node into the current module.
                             self.current_module
                                 .borrow_mut()
-                                .insert(&item.ident, node)
+                                .insert(item.ident.clone(), node)
                                 .expect_none("type node shouldn't apprear more than once");
                         }
                         _ => self.add_definition_symbol(&item.ident, &item.vis, &og_item),
@@ -292,7 +296,7 @@ impl TypeResolver {
         }
     }
 
-    /// Add a symbol from a `use` state,emt to the corrent scope.
+    /// Add a symbol from a `use` statement to the corrent scope.
     fn add_use_symbol(
         &mut self,
         ident: &Ident,
@@ -302,6 +306,7 @@ impl TypeResolver {
     ) {
         // Create a new node for the symbol.
         let mut node = SymbolTreeNode::new(
+            ident.clone(),
             is_public(vis),
             Some(self.current_module.borrow().node.clone()),
             None,
@@ -312,16 +317,15 @@ impl TypeResolver {
         // If the path doesn't start with "crate" or "super", this means that it comes from
         // an external library, which means we should mark it as terminal.
         let first_segment = &path[0];
-        if (first_segment != "crate")
-            && (first_segment != "super")
-            && (first_segment != "self") {
-            node.borrow_mut().terminal = Some(Terminal::new(node.clone(), Definition::ForeignType(path)));
+        if PATH_MODIFIERS.get(&first_segment.to_string()).is_none() {
+            node.borrow_mut().terminal =
+                Some(Terminal::new(node.clone(), Definition::ForeignType(path)));
         };
 
         // Add the symbol to the module.
         self.current_module
             .borrow_mut()
-            .insert(ident, node)
+            .insert(ident.clone(), node)
             .expect_none("type node shouldn't apprear more than once");
     }
 
@@ -333,13 +337,17 @@ impl TypeResolver {
 
         // Add symbol.
         let mut node = SymbolTreeNode::new(
+            ident.clone(),
             is_public(vis),
             Some(self.current_module.borrow().node.clone()),
             None,
             true,
             path,
         );
-        node.borrow_mut().terminal = Some(Terminal::new(node.clone(), Definition::Type(definition.clone())));
-        self.current_module.borrow_mut().insert(ident, node.clone()).expect_none(&format!("Trying to insert {:?} but already exist. Type node shouldn't apprear more than once", node));
+        node.borrow_mut().terminal = Some(Terminal::new(
+            node.clone(),
+            Definition::Type(definition.clone()),
+        ));
+        self.current_module.borrow_mut().insert(ident.clone(), node.clone()).expect_none(&format!("Trying to insert {:?} but already exist. Type node shouldn't apprear more than once", node));
     }
 }

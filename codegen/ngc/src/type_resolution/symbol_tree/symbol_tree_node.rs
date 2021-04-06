@@ -18,6 +18,8 @@ use syn::{
 #[derive(Derivative)]
 #[derivative(Debug)]
 pub struct SymbolTreeNodeInner {
+    /// Identifier.
+    pub ident: Ident,
     /// Whether the type is public.
     pub public: bool,
     /// If `self` is a module, `self.parent` is the `super` module, aka parent module.
@@ -35,7 +37,16 @@ pub struct SymbolTreeNodeInner {
 impl SymbolTreeNodeInner {
     /// Get the parent module from this node.
     pub fn get_parent_module(&self) -> Module {
-        match &self.parent.as_ref().unwrap().borrow().terminal.as_ref().unwrap().definition {
+        match &self
+            .parent
+            .as_ref()
+            .unwrap()
+            .borrow()
+            .terminal
+            .as_ref()
+            .unwrap()
+            .definition
+        {
             Definition::Module(md) => md.clone(),
             _ => panic!("Expecting the parent of a module to be a module"),
         }
@@ -49,6 +60,7 @@ pub struct SymbolTreeNode {
 
 impl SymbolTreeNode {
     pub fn new(
+        ident: Ident,
         public: bool,
         parent: Option<SymbolTreeNode>,
         terminal: Option<Terminal>,
@@ -57,6 +69,7 @@ impl SymbolTreeNode {
     ) -> Self {
         Self {
             inner: Rc::new(RefCell::new(SymbolTreeNodeInner {
+                ident,
                 public,
                 parent,
                 terminal,
@@ -73,6 +86,14 @@ impl SymbolTreeNode {
     pub fn borrow_mut(&self) -> RefMut<SymbolTreeNodeInner> {
         RefCell::borrow_mut(&self.inner)
     }
+
+    /// Returns the root node of the tree.
+    pub fn root(&self) -> Self {
+        match self.borrow().parent.as_ref() {
+            Some(parent) => parent.root(),
+            None => self.clone(),
+        }
+    }
 }
 
 /// A terminal node.
@@ -88,10 +109,7 @@ pub struct Terminal {
 
 impl Terminal {
     pub fn new(node: SymbolTreeNode, definition: Definition) -> Self {
-        Self {
-            node,
-            definition,
-        }
+        Self { node, definition }
     }
 }
 

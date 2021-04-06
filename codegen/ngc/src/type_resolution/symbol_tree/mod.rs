@@ -14,6 +14,7 @@ use std::{
     ops::{Deref, DerefMut},
     rc::Rc,
 };
+use std::collections::HashSet;
 
 use super::utils::is_public;
 use proc_macro2::Span;
@@ -21,3 +22,11 @@ use quote::format_ident;
 use syn::{
     Ident, Item, ItemFn, ItemStruct, ItemTrait, Lit, LitInt, PathSegment, VisPublic, Visibility,
 };
+
+lazy_static::lazy_static!{
+    pub static ref PATH_MODIFIERS: HashSet<String> = vec![
+        (String::from("crate")),
+        (String::from("super")),
+        (String::from("self")),
+    ].into_iter().collect();
+}
