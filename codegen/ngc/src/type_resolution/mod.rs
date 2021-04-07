@@ -59,18 +59,18 @@ pub fn generate_typeid(ast: &mut syn::File) {
 
             // BEGIN Generated DropMap
             use hashbrown::HashMap;
-            use crate::rref::traits::{CustomCleanup, TypeIdentifiable};
+            use crate::rref::traits::{CustomCleanup};
 
             /// Drops the pointer, assumes it is of type T
             unsafe fn drop_t<T: CustomCleanup + TypeIdentifiable>(ptr: *mut u8) {
                 // Cast the pointer to a pointer of type T
-                let ptr_t: *mut T = transmute(ptr);
+                let ptr_t: *mut T = core::mem::transmute(ptr);
                 // Drop the object pointed by the buffer. This should recursively drop all the
                 // nested fields of type T, if there's any.
                 core::mem::drop(ptr_t);
             }
 
-            struct DropMap(HashMap<u64, fn(*mut u8) -> ()>);
+            pub struct DropMap(HashMap<u64, unsafe fn(*mut u8) -> ()>);
 
             impl DropMap {
                 pub fn new() -> Self {
@@ -85,7 +85,7 @@ pub fn generate_typeid(ast: &mut syn::File) {
                     self.0.insert(type_id, type_erased_drop);
                 }
 
-                pub fn get_drop(&self, type_id: u64) -> Option<&fn(*mut u8) -> ()> {
+                pub fn get_drop(&self, type_id: u64) -> Option<&unsafe fn(*mut u8) -> ()> {
                     self.0.get(&type_id)
                 }
 
