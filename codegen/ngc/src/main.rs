@@ -9,11 +9,11 @@ mod utils;
 #[macro_use]
 extern crate derivative;
 
+use std::env;
 use std::error::Error;
 use std::fs::File;
 use std::io::Read;
 use std::process::Command;
-use std::{env};
 
 use clap::{App, Arg, ArgMatches};
 use log::info;

@@ -9,12 +9,10 @@ use std::{
 use std::{collections::HashSet, fmt};
 
 use super::super::utils::is_public;
-use log::{trace};
+use log::trace;
 
 use quote::format_ident;
-use syn::{
-    Ident, Visibility,
-};
+use syn::{Ident, Visibility};
 
 #[derive(Clone)]
 pub struct ModuleInner {
@@ -113,7 +111,7 @@ impl ModuleInner {
         node
     }
 
-    // Return a iterator over its children.
+    // Return an iterator over its children.
     pub fn iter(&self) -> std::collections::hash_map::Iter<Ident, SymbolTreeNode> {
         self.children.iter()
     }

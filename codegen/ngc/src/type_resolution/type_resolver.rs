@@ -3,11 +3,7 @@ use crate::expect;
 use crate::type_resolution::symbol_tree::PATH_MODIFIERS;
 use log::{debug, info, trace};
 
-
-
-use std::{
-    borrow::{Borrow, BorrowMut},
-};
+use std::borrow::{Borrow, BorrowMut};
 use syn::{
     spanned::Spanned, File, FnArg, Ident, Item, ItemTrait, ItemUse, Path, PathSegment, ReturnType,
     TraitItem, TraitItemMethod, Type, UseTree, Visibility,

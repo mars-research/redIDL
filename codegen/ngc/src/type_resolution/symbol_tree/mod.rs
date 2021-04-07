@@ -6,15 +6,8 @@ pub use module::*;
 pub use symbol_tree::*;
 pub use symbol_tree_node::*;
 
+use std::borrow::Borrow;
 use std::collections::HashSet;
-use std::{
-    borrow::Borrow,
-};
-
-
-
-
-
 
 lazy_static::lazy_static! {
     pub static ref PATH_MODIFIERS: HashSet<String> = vec![

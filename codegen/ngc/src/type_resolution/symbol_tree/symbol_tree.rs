@@ -1,13 +1,9 @@
 use super::module::Module;
 use super::symbol_tree_node::*;
 
-use std::{
-    borrow::Borrow,
-};
-
+use std::borrow::Borrow;
 
 use quote::format_ident;
-
 
 /// A tree that contains all the symbols in the AST.
 /// Each node is a module

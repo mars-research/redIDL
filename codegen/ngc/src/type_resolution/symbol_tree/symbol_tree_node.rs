@@ -6,8 +6,6 @@ use std::{
     rc::Rc,
 };
 
-
-
 use syn::{
     Ident, Item, ItemFn, ItemStruct, ItemTrait, Lit, LitInt, PathSegment, VisPublic, Visibility,
 };
