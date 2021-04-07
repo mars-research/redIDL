@@ -1,6 +1,5 @@
 use log::{debug, info, trace};
 
-
 use std::{
     borrow::Borrow,
     collections::{HashMap, HashSet},
@@ -399,6 +398,15 @@ impl RRefedFinder {
         );
         let mut current_node = self.current_module.clone();
         let mut path_segments: Vec<PathSegment> = path.segments.iter().cloned().collect();
+
+        // If the path starts with `::` and doesn't come from `crate` or `super, or it comes from
+        // some unknown module(external module), we know that it's already fully qualified.
+        if path.leading_colon.is_some()
+            && PATH_MODIFIERS.contains(&path.segments.first().unwrap().ident.to_string())
+            || current_node.borrow().get(&path_segments[0].ident).is_none()
+        {
+            return (path.clone(), None);
+        }
 
         // Walk the module tree and resolve the type.
         let final_segment = path_segments.remove(path_segments.len() - 1);
