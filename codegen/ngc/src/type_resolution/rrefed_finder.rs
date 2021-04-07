@@ -1,3 +1,4 @@
+use lazy_static::lazy_static;
 use log::{debug, info, trace};
 
 use std::{
@@ -11,6 +12,15 @@ use syn::{
 
 use super::symbol_tree::*;
 use super::utils::*;
+
+lazy_static! {
+    static ref RREF_PATH: Vec<String> = vec![
+        String::from("crate"),
+        String::from("rref"),
+        String::from("rref"),
+        String::from("RRef"),
+    ];
+}
 
 pub struct RRefedFinder {
     /// All the fully qualified path of all `RRef`ed types.
@@ -35,6 +45,39 @@ impl RRefedFinder {
     pub fn find_rrefed(mut self, ast: &File) -> HashSet<Type> {
         self.find_rrefed_recursive(&ast.items);
         self.type_list
+            .into_iter()
+            .filter_map(|ty| {
+                // Returns the type `T` of `RRef<T>`.
+                if let Type::Path(path) = ty {
+                    let path = &path.path;
+                    if path
+                        .segments
+                        .iter()
+                        .map(|seg| seg.ident.to_string())
+                        .eq(RREF_PATH.iter().map(|x| x.clone()))
+                    {
+                        match &path.segments.last().unwrap().arguments {
+                            PathArguments::AngleBracketed(argumnents) => {
+                                assert_eq!(argumnents.args.len(), 1);
+                                let generic_arg = argumnents.args.first().unwrap();
+                                match generic_arg {
+                                    GenericArgument::Type(ty) => {
+                                        return Some(ty.clone());
+                                    }
+                                    _ => panic!(
+                                        "Expecting a generic type parameter in rref: {:?}",
+                                        path
+                                    ),
+                                }
+                            }
+                            _ => panic!("Cannot find generic argument in rref: {:?}", path),
+                        }
+                    }
+                }
+
+                None
+            })
+            .collect()
     }
 
     fn find_rrefed_recursive(&mut self, items: &[syn::Item]) {
