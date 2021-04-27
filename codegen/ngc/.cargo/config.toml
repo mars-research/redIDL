@@ -1,0 +1,2 @@
+[alias]
+doit = "run ../../../../interface/generated/merged.rs out.rs --domain_create_output=create.rs"
