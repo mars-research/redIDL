@@ -1,3 +1,7 @@
+use std::collections::HashMap;
+
+use syn::NestedMeta;
+
 #[macro_export]
 macro_rules! has_attribute {
     ($item: ident, $attr: ident) => {{
@@ -63,4 +67,41 @@ macro_rules! expect {
             None => panic!(std::format!($fmt, $($args)*)),
         }
     };
+}
+
+pub fn create_attribue_map(attrs: &Vec<syn::Attribute>) -> HashMap<String, Option<syn::Lit>> {
+    let mut map = HashMap::new();
+    for attr in attrs {
+        map.extend(create_attribue_map_from_meta(&attr.parse_meta().unwrap()))
+    }
+    map
+}
+
+fn create_attribue_map_from_meta(meta: &syn::Meta) -> HashMap<String, Option<syn::Lit>> {
+    let mut map = HashMap::new();
+    match meta {
+        syn::Meta::List(lst) => {
+            for meta in &lst.nested {
+                match meta {
+                    NestedMeta::Meta(meta) => map.extend(create_attribue_map_from_meta(meta)),
+                    NestedMeta::Lit(lit) => {
+                        match lit {
+                            syn::Lit::Str(str) => map.insert(str.value(), None),
+                            _ => unimplemented!("{:#?}", lit),
+                        };
+                    }
+                };
+            }
+        }
+        syn::Meta::NameValue(kv) => {
+            map.insert(
+                kv.path.get_ident().unwrap().to_string(),
+                Some(kv.lit.clone()),
+            );
+        }
+        syn::Meta::Path(path) => {
+            map.insert(path.get_ident().unwrap().to_string(), None);
+        }
+    }
+    map
 }

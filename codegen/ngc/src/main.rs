@@ -17,7 +17,7 @@ use std::process::Command;
 
 use clap::{App, Arg, ArgMatches};
 use log::{info, warn};
-use quote::quote;
+use quote::{format_ident, quote};
 use syn::{parse_quote, Item, ItemMod, Meta, NestedMeta, Type};
 
 fn main() {
@@ -30,21 +30,23 @@ fn main() {
         .about("RedIDL New Generation Compiler(NGC).")
         .arg(
             Arg::with_name("INPUT")
-            .help("Path to the interface file.")
-            .required(true)
-            .index(1),
+                .help("Path to the interface file.")
+                .required(true)
+                .index(1),
         )
         .arg(
             Arg::with_name("OUTPUT")
-            .help("Path to the output file.")
-            .required(true)
-            .index(2),
+                .help("Path to the output file.")
+                .required(true)
+                .index(2),
         )
-        .arg(Arg::with_name("domain_create_output")
-                               .value_name("domain_create_output")
-                               .long("domain_create_output")
-                               .help("Path to the domain create generation output.")
-                               .takes_value(true))
+        .arg(
+            Arg::with_name("domain_create_output")
+                .value_name("domain_create_output")
+                .long("domain_create_output")
+                .help("Path to the domain create generation output.")
+                .takes_value(true),
+        )
         .get_matches();
 
     run(&matches).unwrap();
@@ -71,13 +73,31 @@ fn run(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     // Write generated domain create.
     if let Some(domain_create_out) = args.value_of("domain_create_output") {
-        let domain_create_ast: syn::File = parse_quote!{
+        let domain_create_ast: syn::File = parse_quote! {
+            use interface::domain_create;
+            use interface::proxy;
+            use syscalls;
+            use interface;
+
+            use alloc::boxed::Box;
+            use alloc::sync::Arc;
+
+            use crate::domain::load_domain;
+            use crate::heap::PHeap;
+            use crate::interrupt::{disable_irq, enable_irq};
+            use crate::thread;
+            use syscalls::{Heap, Domain, Interrupt};
+            use interface::{bdev::{BDev, NvmeBDev}, vfs::VFS, usrnet::UsrNet, rv6::Rv6, dom_a::DomA, dom_c::DomC, net::Net, pci::{PCI, PciBar, PciResource}};
+            use interface::error::Result;
+            use interface::tpm::UsrTpm;
+            use interface::domain_create::*;
+
             #(#generated_domain_create)*
         };
 
-        write_ast_to_file(&ast, output_path)
+        info!("Writting interface output to {}", domain_create_out);
+        write_ast_to_file(&domain_create_ast, domain_create_out)
     }
-
 
     info!("Writting interface output to {}", output_path);
     let output = quote!(#ast).to_string();
@@ -89,7 +109,6 @@ fn run(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         .arg(format!("rustfmt {}", &output_path))
         .output();
 
-
     Ok(())
 }
 
@@ -100,13 +119,16 @@ fn generate(ast: &mut syn::File) -> Vec<syn::Item> {
     crate::type_resolution::generate_typeid(ast);
 
     // Generate proxy and domain creations.
-    let mut module_path = Vec::<syn::Ident>::new();
+    let mut module_path = vec![format_ident!("interface")];
     generate_recurse(&mut ast.items, &mut module_path)
 }
 
 // Generate proxy and other stuff from `items` in place, recursively.
 // Returns domain create generation.
-fn generate_recurse(items: &mut Vec<syn::Item>, module_path: &mut Vec<syn::Ident>) -> Vec<syn::Item> {
+fn generate_recurse(
+    items: &mut Vec<syn::Item>,
+    module_path: &mut Vec<syn::Ident>,
+) -> Vec<syn::Item> {
     let mut generated_items = Vec::<syn::Item>::new();
     let mut generated_domain_create_items = Vec::<syn::Item>::new();
     for item in items.iter_mut() {
@@ -196,16 +218,19 @@ fn remove_prelude(ast: &mut syn::File) {
 
 // Write ast to file and run formatter.
 fn write_ast_to_file(ast: &syn::File, output_path: &str) {
-     // Write output
-     info!("Writting output to {}", output_path);
-     let output = quote!(#ast).to_string();
-     std::fs::write(&output_path, output).expect("Failed to write output file");
- 
-     // Format output file
-     if let Err(err) =  Command::new("bash")
-         .arg("-c")
-         .arg(format!("rustfmt {}", &output_path))
-         .output() {
-            warn!("Failed to run formatter on output file {}. Formatting is skipped. Error {}", output_path, err)
+    // Write output
+    let output = quote!(#ast).to_string();
+    std::fs::write(&output_path, output).expect("Failed to write output file");
+
+    // Format output file
+    if let Err(err) = Command::new("bash")
+        .arg("-c")
+        .arg(format!("rustfmt {}", &output_path))
+        .output()
+    {
+        warn!(
+            "Failed to run formatter on output file {}. Formatting is skipped. Error {}",
+            output_path, err
+        )
     }
 }

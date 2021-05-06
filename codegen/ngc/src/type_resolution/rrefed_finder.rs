@@ -578,6 +578,7 @@ enum GenericResult {
     Literal(Lit),
 }
 
+#[allow(dead_code)]
 impl GenericResult {
     fn ty(self) -> Type {
         match self {

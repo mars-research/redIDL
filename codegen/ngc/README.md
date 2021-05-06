@@ -4,8 +4,44 @@ A new tool to replace the [old redIDL code generation tool](../codegen-old/READM
 
 # Architecture
 
+The 
+
 * Single pass, single file
 * Feature guard for different types of generation
+
+# Domain Creation
+
+
+There're types of domain:
+1. Statically linked domains: `#[static_domain_create(path="bdev", type="bdev")]`
+1. Memory blob domains: `#[blob_domain_create(type="rv6_usr")]`
+
+## Statically linked domains
+These are the mostly redleaf domains. They are loaded before the rv6 file systems is initialized.
+Therefore, they are against the kernel binary during compile time and need to be fetched from the
+kernel image during domain creation. 
+
+Local generated variables are named with a postfix `_` to distinguish them between the method 
+arguments.
+
+## 
+
+We need to generate a something that the domains can use to spawn domain. We can either have a 
+trait object or a library. The library generation will be hard, maybe impossible to implement 
+because it will need to depend on many kernel functionalities. Like changing the thread state and
+creating the domain object. It's perferred to generated it as some implementation of a struct and 
+pass the trait object to the user.
+
+problem with recreation.
+* accept attribute
+
+Currently, we treat `create` and `recreate` equally since we have not implemented an efficient
+domain recreation logic yet.
+
+## Future work
+* Incorporate type resolution
+* Support more than two return values
+* Extract the actual arguments.
 
 
 

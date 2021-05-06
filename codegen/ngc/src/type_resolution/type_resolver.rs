@@ -9,7 +9,6 @@ use syn::{
     TraitItem, TraitItemMethod, Type, UseTree, Visibility,
 };
 
-const DEFINITION_POPULATION_TARGET: &str = "definition_population";
 const RELATIVE_PATH_TARGET: &str = "relative_path_resolution";
 
 pub struct TypeResolver {
