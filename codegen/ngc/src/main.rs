@@ -151,7 +151,7 @@ fn generate_recurse(
                 if let Some(generated) =
                     crate::domain_create::generate_domain_create(tr, module_path)
                 {
-                    generated_domain_create_items.push(generated);
+                    generated_domain_create_items.extend(generated);
                 }
             }
             _ => {}

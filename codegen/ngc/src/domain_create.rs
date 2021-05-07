@@ -4,14 +4,11 @@ use crate::{has_attribute, remove_attribute};
 
 use log::info;
 use quote::format_ident;
-use syn::{
-    parse_quote, FnArg, Ident, Item, ItemTrait, Lit, Token, TraitItem,
-    TraitItemMethod,
-};
+use syn::{FnArg, Ident, ImplItemMethod, Item, ItemFn, ItemTrait, Lit, Token, TraitItem, TraitItemMethod, parse_quote};
 
 const DOMAIN_CREATE_ATTR: &str = "domain_create";
 
-pub fn generate_domain_create(input: &mut ItemTrait, module_path: &[Ident]) -> Option<Item> {
+pub fn generate_domain_create(input: &mut ItemTrait, module_path: &[Ident]) -> Option<Vec<Item>> {
     // Only traits with `DOMAIN_CREATE_ATTR` will be processed.
     if !has_attribute!(input, DOMAIN_CREATE_ATTR) {
         return None;
@@ -41,7 +38,7 @@ pub fn generate_domain_create(input: &mut ItemTrait, module_path: &[Ident]) -> O
     );
 
     // Generate code. Proxy is generated inplace and domain create is returned.
-    let generated_impl_items: Vec<syn::ImplItemMethod> = input
+    let (generated_impl_items, generated_fns): (Vec<ImplItemMethod>, Vec<ItemFn>) = input
         .items
         .iter()
         .map(|item| match item {
@@ -50,7 +47,7 @@ pub fn generate_domain_create(input: &mut ItemTrait, module_path: &[Ident]) -> O
             }
             _ => unimplemented!("Non-method member found in trait {:#?}", input),
         })
-        .collect();
+        .unzip();
 
     // Compute the path to the trait.
     let mut trait_path: String = module_path.iter().map(|ident| {
@@ -60,19 +57,24 @@ pub fn generate_domain_create(input: &mut ItemTrait, module_path: &[Ident]) -> O
     let trait_path: syn::Path = syn::parse_str(&trait_path).unwrap();
 
     // Generate the impl block.
-    let generated: syn::ItemImpl = parse_quote! {
+    let mut generated: Vec<Item> = Vec::new();
+    generated.push(Item::Impl(parse_quote! {
         impl #trait_path for crate::syscalls::PDomain {
             #(#generated_impl_items)*
         }
-    };
+    }));
 
-    Some(Item::Impl(generated))
+    generated.extend(generated_fns.into_iter().map(|f| Item::Fn(f)));
+
+    Some(generated)
 }
 
+/// This generates a public fn and a impl method.
+/// This public fn is exposed to the kernel while the impl method is exposed to the users.
 fn generate_domain_create_for_trait_method(
     domain_path: &str,
     method: &TraitItemMethod,
-) -> syn::ImplItemMethod {
+) -> (syn::ImplItemMethod, syn::ItemFn) {
     // Remove `self` from the argument list
     let selfless_args: Vec<_> = method
         .sig
@@ -86,11 +88,13 @@ fn generate_domain_create_for_trait_method(
 
     // Extract essential variables for generation.
     let method_ident = &method.sig.ident;
-    let method_args = &method.sig.inputs;
+    let method_args = method.sig.inputs.iter().collect::<Vec<_>>();
     let method_sig = &method.sig;
     let canonicalized_domain_path = domain_path.replace("/", "_");
+    let generated_fn_ident = format_ident!("{}_{}", canonicalized_domain_path, method_ident);
     let domain_start_ident = format_ident!("_binary_domains_build_{}_start", canonicalized_domain_path);
     let domain_end_ident = format_ident!("_binary_domains_build_{}_end", canonicalized_domain_path);
+    let rtn = &method.sig.output;
     let ep_rtn = match &method.sig.output {
         syn::ReturnType::Type(_, ty) => match ty {
             box syn::Type::Tuple(tuple) => {
@@ -102,8 +106,28 @@ fn generate_domain_create_for_trait_method(
         syn::ReturnType::Default => panic!("Method {:?} of domain {:?} does not have a return type. Expecting a tuple of two.", method_ident, domain_path),
     };
 
-    parse_quote! {
+    // Generate impl method.
+    let generated_impl = parse_quote! {
         #method_sig {
+            // Entering kernel, disable irq
+            crate::interrupt::disable_irq();
+
+            let rtn_ = #generated_fn_ident(#(#selfless_args),*);
+
+            // Leaving kernel, reable irq
+            crate::interrupt::enable_irq();
+
+            // Returns the domain to caller.
+            rtn_
+        }
+    };
+
+
+    // Generated fn.
+    let mut fn_sig = method_sig.clone();
+    fn_sig.ident = generated_fn_ident.clone();
+    let generated_fn = parse_quote! {
+        pub(crate) fn #generated_fn_ident(#(#selfless_args),*) -> rtn {
             // Entering kernel, disable irq
             crate::interrupt::disable_irq();
 
@@ -162,5 +186,7 @@ fn generate_domain_create_for_trait_method(
             // Returns the domain to caller.
             rtn_
         }
-    }
+    };
+
+    (generated_impl, generated_fn)
 }
