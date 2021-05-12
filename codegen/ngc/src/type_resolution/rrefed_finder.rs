@@ -44,6 +44,7 @@ impl RRefedFinder {
     /// Takes a AST and returns a list of fully-qualified paths of all `RRef`ed types.
     pub fn find_rrefed(mut self, ast: &File) -> HashSet<Type> {
         self.find_rrefed_recursive(&ast.items);
+        debug!("Type list: \n{:#?}", self.type_list);
         self.type_list
             .into_iter()
             .filter_map(|ty| {
