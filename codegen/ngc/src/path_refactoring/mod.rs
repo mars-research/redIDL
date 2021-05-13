@@ -1,5 +1,9 @@
 ///! Utility functions that refactor the paths in the AST nodes.
 
+#[cfg(test)]
+mod tests;
+
+
 use syn::{FnArg, GenericArgument, Ident, Item, ItemTrait, Path, PathArguments, ReturnType, TraitItem, TraitItemMethod, Type};
 
 pub fn refactor_path_in_ast(src: &Ident, dest: &Ident, ast: &mut syn::File) {
@@ -93,7 +97,16 @@ pub fn refactor_path_in_type(src: &Ident, dest: &Ident, ty: &mut Type) {
         Type::Ptr(_) => {}
         Type::Reference(_) => {}
         Type::Slice(_) => {}
-        Type::TraitObject(_) => {}
+        Type::TraitObject(tr) => {
+            for bound in &mut tr.bounds {
+                match bound {
+                    syn::TypeParamBound::Trait(tr) => {
+                        refactor_path_in_path(src, dest, &mut tr.path)
+                    }
+                    syn::TypeParamBound::Lifetime(_) => {}
+                }
+            }
+        }
         Type::Tuple(tuple) => {
             for elem in &mut tuple.elems {
                 refactor_path_in_type(src, dest, elem)
@@ -137,3 +150,4 @@ pub fn refactor_path_in_generic_argument(src: &Ident, dest: &Ident, arg: &mut Ge
         GenericArgument::Const(_) => {}
     }
 }
+
