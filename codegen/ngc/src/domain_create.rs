@@ -16,6 +16,20 @@ pub fn generate_domain_create(input: &mut ItemTrait, module_path: &[Ident]) -> O
 
     info!("Generating domain create for trait {:?}.", input.ident);
 
+    // Create a copy of the input, refactor the path from `crate` to `interface, and we will be
+    // working with the refactored one from now on.
+    // The reason is that domain create will be generated into the kernel, which has a different
+    // dependency path to the interface
+    let mut input_copy = input.clone();
+    crate::path_refactoring::refactor_path_in_trait(&format_ident!("crate"), &format_ident!("interface"), &mut input_copy);
+
+    // Remove the interface attribute and add a comment so we know it's an domain_create
+    remove_attribute!(input, DOMAIN_CREATE_ATTR);
+    input.attrs.push(
+        parse_quote! {#[doc = "redIDL Auto Generated: domain_create trait. Generations are below"]},
+    );
+    let input = input_copy;
+
     // Create an attribute map
     let attrs: HashMap<String, Option<Lit>> = crate::utils::create_attribue_map(&input.attrs);
 
@@ -30,12 +44,6 @@ pub fn generate_domain_create(input: &mut ItemTrait, module_path: &[Ident]) -> O
         Lit::Str(domain_path) => domain_path.value(),
         _ => panic!("Expecting a string."),
     };
-
-    // Remove the interface attribute and add a comment so we know it's an domain_create
-    remove_attribute!(input, DOMAIN_CREATE_ATTR);
-    input.attrs.push(
-        parse_quote! {#[doc = "redIDL Auto Generated: domain_create trait. Generations are below"]},
-    );
 
     // Generate code. Proxy is generated inplace and domain create is returned.
     let (generated_impl_items, generated_fns): (Vec<ImplItemMethod>, Vec<ItemFn>) = input
@@ -127,7 +135,7 @@ fn generate_domain_create_for_trait_method(
     let mut fn_sig = method_sig.clone();
     fn_sig.ident = generated_fn_ident.clone();
     let generated_fn = parse_quote! {
-        pub(crate) fn #generated_fn_ident(#(#selfless_args),*) -> rtn {
+        pub(crate) fn #generated_fn_ident(#(#selfless_args),*) #rtn {
             // Entering kernel, disable irq
             crate::interrupt::disable_irq();
 

@@ -3,6 +3,7 @@
 mod domain_create;
 mod proxy;
 mod type_resolution;
+mod path_refactoring;
 #[macro_use]
 mod utils;
 
