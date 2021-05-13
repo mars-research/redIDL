@@ -150,7 +150,7 @@ fn generate_domain_create_for_trait_method(
             );
 
             type UserInit_ =
-                fn(Box<dyn ::syscalls::Syscall>, Box<dyn ::syscalls::Heap>, #(#selfless_args),*) -> #ep_rtn;
+                fn(::alloc::boxed::Box<dyn ::syscalls::Syscall>, ::alloc::boxed::Box<dyn ::syscalls::Heap>, #(#selfless_args),*) -> #ep_rtn;
 
             let (dom_, entry_) = unsafe { crate::domain::load_domain(#domain_path, binary_range_) };
 
@@ -161,7 +161,7 @@ fn generate_domain_create_for_trait_method(
             let pheap_ = ::alloc::boxed::Box::new(crate::heap::PHeap::new());
 
             // update current domain id.
-            let thread_ = thread::get_current_ref();
+            let thread_ = crate::thread::get_current_ref();
             let old_id_ = {
                 let mut thread = thread_.lock();
                 let old_id = thread.current_domain_id;

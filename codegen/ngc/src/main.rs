@@ -75,24 +75,6 @@ fn run(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // Write generated domain create.
     if let Some(domain_create_out) = args.value_of("domain_create_output") {
         let domain_create_ast: syn::File = parse_quote! {
-            use interface::domain_create;
-            use interface::proxy;
-            use syscalls;
-            use interface;
-
-            use alloc::boxed::Box;
-            use alloc::sync::Arc;
-
-            use crate::domain::load_domain;
-            use crate::heap::PHeap;
-            use crate::interrupt::{disable_irq, enable_irq};
-            use crate::thread;
-            use syscalls::{Heap, Domain, Interrupt};
-            use interface::{bdev::{BDev, NvmeBDev}, vfs::VFS, usrnet::UsrNet, rv6::Rv6, dom_a::DomA, dom_c::DomC, net::Net, pci::{PCI, PciBar, PciResource}};
-            use interface::error::Result;
-            use interface::tpm::UsrTpm;
-            use interface::domain_create::*;
-
             #(#generated_domain_create)*
         };
 
