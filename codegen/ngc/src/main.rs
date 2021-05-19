@@ -20,6 +20,7 @@ use clap::{App, Arg, ArgMatches};
 use log::{info, warn};
 use quote::{format_ident, quote};
 use syn::{parse_quote, Item, ItemMod, Meta, NestedMeta, Type};
+use domain_create::DomainCreateBuilder;
 
 fn main() {
     // Initialze logging
@@ -103,24 +104,31 @@ fn generate(ast: &mut syn::File) -> Vec<syn::Item> {
 
     // Generate proxy and domain creations.
     let mut module_path = vec![format_ident!("interface")];
-    generate_recurse(&mut ast.items, &mut module_path)
+    let mut domain_create_builder = DomainCreateBuilder::new();
+    let mut generated_domain_create_items = generate_recurse(&mut ast.items, &mut domain_create_builder, &mut module_path);
+
+    // Generate create_init, add it to generated domain creates, and return them.
+    generated_domain_create_items.push(domain_create_builder.generate_create_init());
+    generated_domain_create_items
 }
 
 // Generate proxy and other stuff from `items` in place, recursively.
 // Returns domain create generation.
 fn generate_recurse(
     items: &mut Vec<syn::Item>,
+    domain_create_builder: &mut DomainCreateBuilder,
     module_path: &mut Vec<syn::Ident>,
 ) -> Vec<syn::Item> {
     let mut generated_items = Vec::<syn::Item>::new();
     let mut generated_domain_create_items = Vec::<syn::Item>::new();
+    
     for item in items.iter_mut() {
         match item {
             Item::Mod(md) => {
                 if let Some((_, items)) = &mut md.content {
                     // Recursive into the submodule.
                     module_path.push(md.ident.clone());
-                    generated_domain_create_items.extend(generate_recurse(items, module_path));
+                    generated_domain_create_items.extend(generate_recurse(items, domain_create_builder, module_path));
                     module_path.pop();
                 }
             }
@@ -132,7 +140,7 @@ fn generate_recurse(
 
                 // Attempt to generate domain creation
                 if let Some(generated) =
-                    crate::domain_create::generate_domain_create(tr, module_path)
+                domain_create_builder.generate_domain_create(tr, module_path)
                 {
                     generated_domain_create_items.extend(generated);
                 }

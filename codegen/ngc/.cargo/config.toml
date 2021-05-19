@@ -1,2 +1,2 @@
 [alias]
-doit = "run ../../../../interface/generated/merged.rs /dev/null --domain_create_output=/dev/null"
+doit = "run ../../../../interface/generated/merged.rs target/out.rs --domain_create_output=target/create.rs"
