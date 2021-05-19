@@ -1,9 +1,9 @@
 use lazy_static::lazy_static;
-use log::{debug, info, trace};
+use log::{info, trace};
 
 use std::{
     borrow::Borrow,
-    collections::{HashMap, HashSet},
+    collections::{HashMap},
 };
 use syn::{
     Expr, ExprLit, File, FnArg, GenericArgument, Ident, Item, ItemTrait, Lit, Path, PathArguments,

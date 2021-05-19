@@ -4,8 +4,8 @@ use crate::{has_attribute, remove_attribute};
 
 use log::info;
 use quote::format_ident;
-use quote::quote;
-use syn::{Expr, FnArg, Ident, ImplItemMethod, Item, ItemFn, ItemTrait, Lit, Path, Token, TraitItem, TraitItemMethod, parse_quote};
+
+use syn::{Expr, FnArg, Ident, ImplItemMethod, Item, ItemFn, ItemTrait, Lit, Path, TraitItem, TraitItemMethod, parse_quote};
 
 const DOMAIN_CREATE_ATTR: &str = "domain_create";
 
@@ -73,7 +73,7 @@ impl DomainCreateBuilder {
             .unzip();
     
         // Compute the path to the trait.
-        let mut trait_path: String = module_path.iter().map(|ident| {
+        let trait_path: String = module_path.iter().map(|ident| {
             ident.to_string()
         }).collect::<Vec<String>>().join("::");
         let trait_path = format!("{}::{}", trait_path, input.ident);
@@ -91,7 +91,7 @@ impl DomainCreateBuilder {
         }));
     
         // Append the fn blocks
-        generated.extend(generated_fns.into_iter().map(|f| Item::Fn(f)));
+        generated.extend(generated_fns.into_iter().map(Item::Fn));
     
         // Return the generated code.
         Some(generated)
@@ -185,7 +185,7 @@ fn generate_domain_create_for_trait_method(
 
     // Extract essential variables for generation.
     let method_ident = &method.sig.ident;
-    let method_args = method.sig.inputs.iter().collect::<Vec<_>>();
+    let _method_args = method.sig.inputs.iter().collect::<Vec<_>>();
     let method_sig = &method.sig;
     let canonicalized_domain_path = domain_path.replace("/", "_");
     let generated_fn_ident = format_ident!("{}_{}", canonicalized_domain_path, method_ident);
@@ -196,7 +196,7 @@ fn generate_domain_create_for_trait_method(
         syn::ReturnType::Type(_, ty) => match ty {
             box syn::Type::Tuple(tuple) => {
                 assert_eq!(tuple.elems.iter().count(), 2, "Expecting a tuple of two in the return type of method {:?} of domain {:?}", method_ident, domain_path);
-                tuple.elems.iter().skip(1).next().unwrap()
+                tuple.elems.iter().nth(1).unwrap()
             },
             _ => panic!("Expecting a tuple of two in the return type of method {:?} of domain {:?}", method_ident, domain_path),
         },
