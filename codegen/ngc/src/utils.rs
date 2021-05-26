@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use syn::NestedMeta;
+use syn::{FnArg, NestedMeta};
 
 #[macro_export]
 macro_rules! has_attribute {
@@ -104,4 +104,14 @@ fn create_attribue_map_from_meta(meta: &syn::Meta) -> HashMap<String, Option<syn
         }
     }
     map
+}
+
+// Remove `self` from the argument list.
+pub fn get_selfless_args(args: Box<dyn Iterator<Item = &FnArg>>) -> Vec<&FnArg>{
+    args
+        .filter(|arg| match arg {
+            FnArg::Receiver(_) => false,
+            FnArg::Typed(_) => true,
+        })
+        .collect()
 }
