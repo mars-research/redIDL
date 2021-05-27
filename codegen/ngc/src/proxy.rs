@@ -106,6 +106,7 @@ pub fn generate_interface_proxy(input: &mut ItemTrait, _module_path: &[Ident]) -
 /// Generate the proxy itself and the impl block for it.
 pub fn generate_proxy(domain_creates: Vec<(Path, ItemTrait)>) -> Vec<Item> {
     let mut generated_items = vec![];
+    let proxy_struct_ident = format_ident!("ProxyObject");
 
     // Create a mapping between the names and the interfaces.
     let domain_creates: HashMap<Ident, (Path, ItemTrait)> = domain_creates.into_iter().map(|(mut path, definition)| {
@@ -131,18 +132,21 @@ pub fn generate_proxy(domain_creates: Vec<(Path, ItemTrait)>) -> Vec<Item> {
 
     // Generate the struct.
     generated_items.push(Item::Struct(parse_quote! {
+        #[cfg(feature = "proxy")]
         #[derive(Clone)]
-        pub struct Proxy {
+        pub struct #proxy_struct_ident {
                 #(#struct_fields),*
         }
     }));
 
     // Generate unsafe impl for Send and Sync
     generated_items.push(Item::Impl(parse_quote! {
-        unsafe impl Send for Proxy {}
+        #[cfg(feature = "proxy")]
+        unsafe impl Send for #proxy_struct_ident {}
     }));
     generated_items.push(Item::Impl(parse_quote! {
-        unsafe impl Sync for Proxy {}
+        #[cfg(feature = "proxy")]
+        unsafe impl Sync for #proxy_struct_ident {}
     }));
 
     // Generate the main impl block.
@@ -152,7 +156,8 @@ pub fn generate_proxy(domain_creates: Vec<(Path, ItemTrait)>) -> Vec<Item> {
         }
     ).collect();
     generated_items.push(Item::Impl(parse_quote! {
-        impl Proxy {
+        #[cfg(feature = "proxy")]
+        impl #proxy_struct_ident {
             pub fn new(#(#struct_fields),*) -> Self {
                 Self {
                     #(#struct_fields_names_only),*
@@ -171,7 +176,8 @@ pub fn generate_proxy(domain_creates: Vec<(Path, ItemTrait)>) -> Vec<Item> {
         }
     }).collect();
     generated_items.push(Item::Impl(parse_quote! {
-        impl crate::proxy::Proxy for Proxy {
+        #[cfg(feature = "proxy")]
+        impl crate::proxy::Proxy for #proxy_struct_ident {
             // TODO: figure out how to do this without Arc::new every time
             #(#as_fns)*
         }            
@@ -253,7 +259,8 @@ pub fn generate_proxy(domain_creates: Vec<(Path, ItemTrait)>) -> Vec<Item> {
 
         // Generate the impl block
         Item::Impl(parse_quote! {
-            impl #path for Proxy {
+            #[cfg(feature = "proxy")]
+            impl #path for #proxy_struct_ident {
                 #(#impl_fns)*
             }          
         })
