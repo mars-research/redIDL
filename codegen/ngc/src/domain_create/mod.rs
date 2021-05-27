@@ -16,7 +16,7 @@ pub const BLOB_DOMAIN_CREATE_ATTR: &str = "blob_domain_create";
 /// Generation of domain create.
 /// It also keep track of all the domain create it generates.
 pub struct DomainCreateBuilder {
-    domain_creates: Vec<Path>,
+    domain_creates: Vec<(Path, ItemTrait)>,
 }
 
 impl DomainCreateBuilder {
@@ -44,6 +44,16 @@ impl DomainCreateBuilder {
         }
     
         info!("Generating domain create for trait {:?}.", input.ident);
+
+        // Compute the path to the trait.
+        let trait_path: String = module_path.iter().map(|ident| {
+            ident.to_string()
+        }).collect::<Vec<String>>().join("::");
+        let trait_path = format!("{}::{}", trait_path, input.ident);
+        let trait_path: syn::Path = syn::parse_str(&trait_path).unwrap();
+
+        // Put the trait path into the list of domain creates.
+        self.domain_creates.push((trait_path.clone(), input.clone()));
 
         // Create a copy of the input, refactor the path from `crate` to `interface, and we will be
         // working with the refactored one from now on.
@@ -86,16 +96,6 @@ impl DomainCreateBuilder {
             })
             .unzip();
     
-        // Compute the path to the trait.
-        let trait_path: String = module_path.iter().map(|ident| {
-            ident.to_string()
-        }).collect::<Vec<String>>().join("::");
-        let trait_path = format!("{}::{}", trait_path, input.ident);
-        let trait_path: syn::Path = syn::parse_str(&trait_path).unwrap();
-
-        // Put the trait path into the list of domain creates.
-        self.domain_creates.push(trait_path.clone());
-    
         // Generate the impl block.
         let mut generated: Vec<Item> = Vec::new();
         generated.push(Item::Impl(parse_quote! {
@@ -111,10 +111,12 @@ impl DomainCreateBuilder {
         Some(generated)
     }
 
-    pub fn generate_create_init(self) -> Item {
-        let domain_creates = self.domain_creates;
+    pub fn generate_create_init(&self) -> Item {
+        let domain_create_paths: Vec<_> = self.domain_creates.iter().map(|(path, _)| {
+            path
+        }).collect();
 
-        let arcs: Vec<Expr> = domain_creates.iter().map(|_| {
+        let arcs: Vec<Expr> = self.domain_creates.iter().map(|_| {
             parse_quote! {
                 ::alloc::sync::Arc::new(crate::syscalls::PDomain::new(::alloc::sync::Arc::clone(&dom)))
             }
@@ -140,7 +142,7 @@ impl DomainCreateBuilder {
                     ::alloc::boxed::Box<dyn ::syscalls::Heap + Send + Sync>,
                     ::alloc::boxed::Box<dyn ::syscalls::Interrupt>,
 
-                    #(::alloc::sync::Arc<dyn #domain_creates>,)*
+                    #(::alloc::sync::Arc<dyn #domain_create_paths>,)*
                 );
             
                 let (dom, entry) = unsafe { crate::domain::load_domain(name, binary_range) };
@@ -176,6 +178,10 @@ impl DomainCreateBuilder {
                 ::alloc::boxed::Box::new(crate::syscalls::PDomain::new(::alloc::sync::Arc::clone(&dom)))
             }
         }
+    }
+
+    pub fn take(self) -> Vec<(Path, ItemTrait)> {
+        self.domain_creates
     }
 }
 

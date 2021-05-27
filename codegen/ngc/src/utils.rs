@@ -107,11 +107,33 @@ fn create_attribue_map_from_meta(meta: &syn::Meta) -> HashMap<String, Option<syn
 }
 
 // Remove `self` from the argument list.
-pub fn get_selfless_args(args: Box<dyn Iterator<Item = &FnArg>>) -> Vec<&FnArg>{
+pub fn get_selfless_args<'a, T: Iterator<Item = &'a FnArg>>(args: T) -> Vec<&'a FnArg>{
     args
         .filter(|arg| match arg {
             FnArg::Receiver(_) => false,
             FnArg::Typed(_) => true,
         })
         .collect()
+}
+
+// Get `T` from `Boxed<T>`. Panic if it's not a box.  
+pub fn get_type_inside_of_box(ty: &syn::Type) -> &syn::Type {
+    match ty {
+        syn::Type::Path(path) => {
+            // TODO: check that this is actually a box.
+            let last_segement = path.path.segments.iter().last().unwrap();
+            match &last_segement.arguments {
+                syn::PathArguments::AngleBracketed(args) => {
+                    assert_eq!(args.args.len(), 1);
+                    let arg = args.args.first().unwrap();
+                    match arg {
+                        syn::GenericArgument::Type(ty) => ty,
+                        _ => panic!("Expecting a type in the box but get: {:#?}", arg),
+                    }
+                },
+                _ => panic!("Expecting Boxed<T> but get: {:#?}", path),
+            }
+        }
+        _ => panic!("Expecting a box but found: {:#?}", ty),
+    }
 }

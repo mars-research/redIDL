@@ -107,8 +107,26 @@ fn generate(ast: &mut syn::File) -> Vec<syn::Item> {
     let mut domain_create_builder = DomainCreateBuilder::new();
     let mut generated_domain_create_items = generate_recurse(&mut ast.items, &mut domain_create_builder, &mut module_path);
 
-    // Generate create_init, add it to generated domain creates, and return them.
+    // Generate create_init and add it to generated domain creates.
     generated_domain_create_items.push(domain_create_builder.generate_create_init());
+
+    // Finds the Generates the proxy struct inplace
+    let proxy_mod = ast.items.iter_mut().find_map(|item| {
+        match item {
+            Item::Mod(md) => {
+                if md.ident == "proxy" {
+                    Some(md)
+                } else {
+                    None
+                }
+            },
+            _ => None,
+        }
+    }).unwrap();
+    let (_, items) = proxy_mod.content.as_mut().unwrap();
+    items.extend(proxy::generate_proxy(domain_create_builder.take()));
+
+    // Return the generated domain creates.
     generated_domain_create_items
 }
 
@@ -134,7 +152,7 @@ fn generate_recurse(
             }
             Item::Trait(tr) => {
                 // Attempt to generate proxy
-                if let Some(generated) = crate::proxy::generate_proxy(tr, module_path) {
+                if let Some(generated) = crate::proxy::generate_interface_proxy(tr, module_path) {
                     generated_items.extend(generated);
                 }
 
