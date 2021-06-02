@@ -10,7 +10,7 @@ use syn::{Expr, FnArg, Ident, ImplItemMethod, Item, ItemFn, ItemTrait, Lit, Path
 
 
 pub const LINKED_DOMAIN_CREATE_ATTR: &str = "domain_create";
-pub const BLOB_DOMAIN_CREATE_ATTR: &str = "blob_domain_create";
+pub const BLOB_DOMAIN_CREATE_ATTR: &str = "domain_create_blob";
 
 
 /// Generation of domain create.

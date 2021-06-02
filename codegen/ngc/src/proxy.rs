@@ -79,7 +79,7 @@ pub fn generate_interface_proxy(input: &mut ItemTrait, _module_path: &[Ident]) -
         &trait_methods[..],
         &cleaned_trait_methods[..],
     );
-    let trampolines = generate_trampolines(trait_ident, &cleaned_trait_methods[..]);
+    let trampolines = generate_trampolines(trait_ident, &proxy_ident, &cleaned_trait_methods[..]);
 
     let proxy_comment_begin_str = format!(
         "----------{} Proxy generation begins-------------",
@@ -109,7 +109,7 @@ pub fn generate_proxy(domain_creates: Vec<(Path, ItemTrait)>) -> Vec<Item> {
     let proxy_struct_ident = format_ident!("ProxyObject");
 
     // Create a mapping between the names and the interfaces.
-    let domain_creates: HashMap<Ident, (Path, ItemTrait)> = domain_creates.into_iter()
+    let domain_creates: Vec<(Ident, Path, ItemTrait)> = domain_creates.into_iter()
     .filter(|(path, _)| {
         // Filter out "CreateProxy" since we don't proxy the proxy creation.
         path.segments.last().unwrap().ident != "CreateProxy"
@@ -123,12 +123,12 @@ pub fn generate_proxy(domain_creates: Vec<(Path, ItemTrait)>) -> Vec<Item> {
             seg.ident.to_string()
         }).collect::<Vec<String>>().join("_");
         let name = format_ident!("{}", path_str);
-        (name, (path, definition))
+        (name, path, definition)
     }).collect();
 
     // Generate each struct field.
     let struct_fields: Vec<FnArg> = domain_creates.iter().map(
-        |(name, (path, _))| {
+        |(name, path, _)| {
             parse_quote! {
                 #name: ::alloc::sync::Arc<dyn #path>
             }
@@ -156,7 +156,7 @@ pub fn generate_proxy(domain_creates: Vec<(Path, ItemTrait)>) -> Vec<Item> {
 
     // Generate the main impl block.
     let struct_fields_names_only: Vec<_> = domain_creates.iter().map(
-        |(name, _)| {
+        |(name, _, _)| {
             name
         }
     ).collect();
@@ -172,10 +172,10 @@ pub fn generate_proxy(domain_creates: Vec<(Path, ItemTrait)>) -> Vec<Item> {
     }));
 
     // Generate impl block for trait Proxy
-    let as_fns: Vec<ImplItemMethod> = domain_creates.iter().map(|(name, (path, _))| {
+    let as_fns: Vec<ImplItemMethod> = domain_creates.iter().map(|(name, path, _)| {
         let ident = format_ident!("as_{}", name);
         parse_quote! {
-            fn #ident(&self) -> Arc<dyn #path> {
+            fn #ident(&self) -> ::alloc::sync::Arc<dyn #path> {
                 ::alloc::sync::Arc::new(self.clone())
             }
         }
@@ -189,7 +189,7 @@ pub fn generate_proxy(domain_creates: Vec<(Path, ItemTrait)>) -> Vec<Item> {
     }));
 
     // Generate impls for domain create traits.
-    generated_items.extend(domain_creates.iter().map(|(name, (path, tr))| {
+    generated_items.extend(domain_creates.iter().map(|(name, path, tr)| {
         // Generate the fns inside of the impl block.
         let impl_fns: Vec<_> = tr.items.iter().filter_map(|item| {
             match item {
@@ -279,6 +279,7 @@ pub fn generate_proxy(domain_creates: Vec<(Path, ItemTrait)>) -> Vec<Item> {
 /// Generate trampolines for `methods`.
 fn generate_trampolines(
     trait_ident: &Ident,
+    proxy_ident: &Ident,
     methods: &[TraitItemMethod],
 ) -> proc_macro2::TokenStream {
     let trampolines = methods.iter()
@@ -301,7 +302,7 @@ fn generate_trampolines(
                 #[cfg(feature = "proxy")]
                 #[no_mangle]
                 extern fn #trampoline_ident(#domain_variable_ident: &alloc::boxed::Box<dyn #trait_ident>, #args) #return_ty {
-                    #domain_variable_ident.#ident(#args)
+                    (&**#domain_variable_ident).#ident(#args)
                 }
     
                 // When the call panics, the continuation stack will jump this function.
