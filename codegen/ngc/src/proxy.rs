@@ -109,7 +109,12 @@ pub fn generate_proxy(domain_creates: Vec<(Path, ItemTrait)>) -> Vec<Item> {
     let proxy_struct_ident = format_ident!("ProxyObject");
 
     // Create a mapping between the names and the interfaces.
-    let domain_creates: HashMap<Ident, (Path, ItemTrait)> = domain_creates.into_iter().map(|(mut path, definition)| {
+    let domain_creates: HashMap<Ident, (Path, ItemTrait)> = domain_creates.into_iter()
+    .filter(|(path, _)| {
+        // Filter out "CreateProxy" since we don't proxy the proxy creation.
+        path.segments.last().unwrap().ident != "CreateProxy"
+    })
+    .map(|(mut path, definition)| {
         // Make sure the path starts with `crate` since proxy will be generated inside of interface.
         path.segments.first_mut().unwrap().ident = format_ident!("crate");
 
