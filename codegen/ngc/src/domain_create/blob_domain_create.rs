@@ -29,6 +29,7 @@ pub fn generate_domain_create_for_trait_method(
     // The first two arguments will be filtered out since they are only used for domain create.
     let ep_args: Vec<_> = selfless_args
         .iter()
+        .skip(2)
         .collect();
 
     // Extract essential variables for generation.
@@ -88,6 +89,10 @@ pub fn generate_domain_create_for_trait_method(
             type UserInit_ =
                 fn(::alloc::boxed::Box<dyn ::syscalls::Syscall>, ::alloc::boxed::Box<dyn ::syscalls::Heap>, #(#ep_args),*) -> #ep_rtn;
 
+            #[cfg(feature = "domain_create_log")]
+            println!("Loading blob_domain/{}/{}", #domain_path, name);
+            
+
             let (dom_, entry_) = unsafe { crate::domain::load_domain(#domain_path, binary_range_) };
 
             // Type cast the pointer to entry point to the correct type.
@@ -118,7 +123,7 @@ pub fn generate_domain_create_for_trait_method(
             }
 
             #[cfg(feature = "domain_create_log")]
-            println!("domain/{}/{}: returned from entry point", #domain_path, name);
+            println!("blob_domain/{}/{}: returned from entry point", #domain_path, name);
 
             // Setup the return object.
             let dom_: ::alloc::boxed::Box<dyn ::syscalls::Domain> = ::alloc::boxed::Box::new(crate::syscalls::PDomain::new(::alloc::sync::Arc::clone(&dom_)));
