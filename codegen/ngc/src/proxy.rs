@@ -378,8 +378,9 @@ fn generate_proxy_impl_one(
     let return_ty = &sig.output;
     parse_quote! {
         fn #ident(#args) #return_ty {
+            // This is no longer needed because we can get domain_id from binary region.
             // move thread to next domain
-            let caller_domain = unsafe { ::libsyscalls::syscalls::sys_update_current_domain_id(self.domain_id) };
+            // let caller_domain = unsafe { ::libsyscalls::syscalls::sys_update_current_domain_id(self.domain_id) };
 
             #[cfg(not(feature = "trampoline"))]
             let r = self.domain.#ident(#cleaned_args);
@@ -392,7 +393,7 @@ fn generate_proxy_impl_one(
             }
 
             // move thread back
-            unsafe { ::libsyscalls::syscalls::sys_update_current_domain_id(caller_domain) };
+            // unsafe { ::libsyscalls::syscalls::sys_update_current_domain_id(caller_domain) };
 
             r
         }
