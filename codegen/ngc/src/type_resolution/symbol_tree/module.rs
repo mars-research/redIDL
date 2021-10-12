@@ -144,10 +144,11 @@ impl Module {
         let new_module = Self::new(ident, new_node.clone());
         let definition = Definition::Module(new_module.clone());
         new_node.borrow_mut().terminal = Some(Terminal::new(new_node.clone(), definition));
-        self.borrow_mut()
+        assert!(self
+            .borrow_mut()
             .children
             .insert(ident.clone(), new_node)
-            .unwrap_none();
+            .is_none());
         new_module
     }
 

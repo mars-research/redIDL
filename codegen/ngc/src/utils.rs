@@ -64,7 +64,7 @@ macro_rules! expect {
     ($result:expr, $fmt:expr, $($args:tt)*) => {
         match $result {
             Some(result) => result,
-            None => panic!(std::format!($fmt, $($args)*)),
+            None => panic!($fmt, $($args)*),
         }
     };
 }

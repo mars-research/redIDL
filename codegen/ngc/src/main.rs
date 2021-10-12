@@ -1,4 +1,4 @@
-#![feature(option_expect_none, box_syntax, box_patterns, option_unwrap_none)]
+#![feature(box_syntax, box_patterns)]
 
 mod domain_create;
 mod proxy;
