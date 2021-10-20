@@ -1,3 +1,7 @@
+use std::collections::HashMap;
+
+use syn::{FnArg, NestedMeta};
+
 #[macro_export]
 macro_rules! has_attribute {
     ($item: ident, $attr: ident) => {{
@@ -63,4 +67,73 @@ macro_rules! expect {
             None => panic!(std::format!($fmt, $($args)*)),
         }
     };
+}
+
+pub fn create_attribue_map(attrs: &Vec<syn::Attribute>) -> HashMap<String, Option<syn::Lit>> {
+    let mut map = HashMap::new();
+    for attr in attrs {
+        map.extend(create_attribue_map_from_meta(&attr.parse_meta().unwrap()))
+    }
+    map
+}
+
+fn create_attribue_map_from_meta(meta: &syn::Meta) -> HashMap<String, Option<syn::Lit>> {
+    let mut map = HashMap::new();
+    match meta {
+        syn::Meta::List(lst) => {
+            for meta in &lst.nested {
+                match meta {
+                    NestedMeta::Meta(meta) => map.extend(create_attribue_map_from_meta(meta)),
+                    NestedMeta::Lit(lit) => {
+                        match lit {
+                            syn::Lit::Str(str) => map.insert(str.value(), None),
+                            _ => unimplemented!("{:#?}", lit),
+                        };
+                    }
+                };
+            }
+        }
+        syn::Meta::NameValue(kv) => {
+            map.insert(
+                kv.path.get_ident().unwrap().to_string(),
+                Some(kv.lit.clone()),
+            );
+        }
+        syn::Meta::Path(path) => {
+            map.insert(path.get_ident().unwrap().to_string(), None);
+        }
+    }
+    map
+}
+
+// Remove `self` from the argument list.
+pub fn get_selfless_args<'a, T: Iterator<Item = &'a FnArg>>(args: T) -> Vec<&'a FnArg>{
+    args
+        .filter(|arg| match arg {
+            FnArg::Receiver(_) => false,
+            FnArg::Typed(_) => true,
+        })
+        .collect()
+}
+
+// Get `T` from `Boxed<T>`. Panic if it's not a box.  
+pub fn get_type_inside_of_box(ty: &syn::Type) -> &syn::Type {
+    match ty {
+        syn::Type::Path(path) => {
+            // TODO: check that this is actually a box.
+            let last_segement = path.path.segments.iter().last().unwrap();
+            match &last_segement.arguments {
+                syn::PathArguments::AngleBracketed(args) => {
+                    assert_eq!(args.args.len(), 1);
+                    let arg = args.args.first().unwrap();
+                    match arg {
+                        syn::GenericArgument::Type(ty) => ty,
+                        _ => panic!("Expecting a type in the box but get: {:#?}", arg),
+                    }
+                },
+                _ => panic!("Expecting Boxed<T> but get: {:#?}", path),
+            }
+        }
+        _ => panic!("Expecting a box but found: {:#?}", ty),
+    }
 }

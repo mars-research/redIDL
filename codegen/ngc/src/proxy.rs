@@ -1,12 +1,16 @@
+use std::collections::HashMap;
+
 use crate::{has_attribute, remove_attribute};
 
 use quote::{format_ident, quote};
 use syn::punctuated::Punctuated;
-use syn::{parse_quote, FnArg, Ident, Item, ItemFn, ItemTrait, Token, TraitItem, TraitItemMethod};
+use syn::{Field, FnArg, Ident, ImplItem, ImplItemMethod, Item, ItemFn, ItemTrait, Path, Token, TraitItem, TraitItemMethod, parse_quote};
 
 const INTERFACE_ATTR: &str = "interface";
 
-pub fn generate_proxy(input: &mut ItemTrait, _module_path: &[Ident]) -> Option<Vec<Item>> {
+/// Generate the proxy for a IPC interface trait.
+pub fn generate_interface_proxy(input: &mut ItemTrait, _module_path: &[Ident]) -> Option<Vec<Item>> {
+    // Noop if the input is not a proxy interface.
     if !has_attribute!(input, INTERFACE_ATTR) {
         return None;
     }
@@ -75,7 +79,7 @@ pub fn generate_proxy(input: &mut ItemTrait, _module_path: &[Ident]) -> Option<V
         &trait_methods[..],
         &cleaned_trait_methods[..],
     );
-    let trampolines = generate_trampolines(trait_ident, &cleaned_trait_methods[..]);
+    let trampolines = generate_trampolines(trait_ident, &proxy_ident, &cleaned_trait_methods[..]);
 
     let proxy_comment_begin_str = format!(
         "----------{} Proxy generation begins-------------",
@@ -99,9 +103,183 @@ pub fn generate_proxy(input: &mut ItemTrait, _module_path: &[Ident]) -> Option<V
     Some(output.items)
 }
 
+/// Generate the proxy itself and the impl block for it.
+pub fn generate_proxy(domain_creates: Vec<(Path, ItemTrait)>) -> Vec<Item> {
+    let mut generated_items = vec![];
+    let proxy_struct_ident = format_ident!("ProxyObject");
+
+    // Create a mapping between the names and the interfaces.
+    let domain_creates: Vec<(Ident, Path, ItemTrait)> = domain_creates.into_iter()
+    .filter(|(path, _)| {
+        // Filter out "CreateProxy" since we don't proxy the proxy creation.
+        path.segments.last().unwrap().ident != "CreateProxy"
+    })
+    .map(|(mut path, definition)| {
+        // Make sure the path starts with `crate` since proxy will be generated inside of interface.
+        path.segments.first_mut().unwrap().ident = format_ident!("crate");
+
+        // The first ident is skipped because it's redundant.
+        let path_str = path.segments.iter().skip(1).map(|seg| {
+            seg.ident.to_string()
+        }).collect::<Vec<String>>().join("_");
+        let name = format_ident!("{}", path_str);
+        (name, path, definition)
+    }).collect();
+
+    // Generate each struct field.
+    let struct_fields: Vec<FnArg> = domain_creates.iter().map(
+        |(name, path, _)| {
+            parse_quote! {
+                #name: ::alloc::sync::Arc<dyn #path>
+            }
+        }
+    ).collect();
+
+    // Generate the struct.
+    generated_items.push(Item::Struct(parse_quote! {
+        #[cfg(feature = "proxy")]
+        #[derive(Clone)]
+        pub struct #proxy_struct_ident {
+                #(#struct_fields),*
+        }
+    }));
+
+    // Generate unsafe impl for Send and Sync
+    generated_items.push(Item::Impl(parse_quote! {
+        #[cfg(feature = "proxy")]
+        unsafe impl Send for #proxy_struct_ident {}
+    }));
+    generated_items.push(Item::Impl(parse_quote! {
+        #[cfg(feature = "proxy")]
+        unsafe impl Sync for #proxy_struct_ident {}
+    }));
+
+    // Generate the main impl block.
+    let struct_fields_names_only: Vec<_> = domain_creates.iter().map(
+        |(name, _, _)| {
+            name
+        }
+    ).collect();
+    generated_items.push(Item::Impl(parse_quote! {
+        #[cfg(feature = "proxy")]
+        impl #proxy_struct_ident {
+            pub fn new(#(#struct_fields),*) -> Self {
+                Self {
+                    #(#struct_fields_names_only),*
+                }
+            }
+        }
+    }));
+
+    // Generate impl block for trait Proxy
+    let as_fns: Vec<ImplItemMethod> = domain_creates.iter().map(|(name, path, _)| {
+        let ident = format_ident!("as_{}", name);
+        parse_quote! {
+            fn #ident(&self) -> ::alloc::sync::Arc<dyn #path> {
+                ::alloc::sync::Arc::new(self.clone())
+            }
+        }
+    }).collect();
+    generated_items.push(Item::Impl(parse_quote! {
+        #[cfg(feature = "proxy")]
+        impl crate::proxy::Proxy for #proxy_struct_ident {
+            // TODO: figure out how to do this without Arc::new every time
+            #(#as_fns)*
+        }            
+    }));
+
+    // Generate impls for domain create traits.
+    generated_items.extend(domain_creates.iter().map(|(name, path, tr)| {
+        // Generate the fns inside of the impl block.
+        let impl_fns: Vec<_> = tr.items.iter().filter_map(|item| {
+            match item {
+                TraitItem::Method(md) => {                    
+                    let sig = &md.sig;
+                    let ident = &sig.ident;
+
+                    // Extract the return type of the usr_ep and generate the return statement for the proxy.
+                    // We only support zero or one trait object currently. Nested and tuples are not supported.
+                    let proxy_rtn_stmt: syn::Stmt = match &sig.output {
+                        syn::ReturnType::Default => panic!("Invalid return type. {:?}", sig),
+                        syn::ReturnType::Type(_, ty) => {
+                            match &**ty {
+                                syn::Type::Tuple(tuple) => {
+                                    // Note that the domain create's return type follows the format
+                                    // of "(Box<dyn Domain>, ()|Box<dyn SomeTraitObject>)"
+                                    assert_eq!(tuple.elems.len(), 2);
+                                    let usr_ep_rtn = &tuple.elems[1];
+                                    match usr_ep_rtn {
+                                        syn::Type::Path(_) => {
+                                            let usr_ep_rtn_trait = crate::utils::get_type_inside_of_box(usr_ep_rtn);
+                                            match usr_ep_rtn_trait {
+                                                syn::Type::TraitObject(tr) => {
+                                                    assert_eq!(tr.bounds.len(), 1);
+                                                    let tr = &tr.bounds.iter().next().unwrap();
+                                                    match tr {
+                                                        syn::TypeParamBound::Trait(tr) => {
+                                                            // The generated proxy is located in the same
+                                                            // module as the trait.
+                                                            // It's path should be "trait_module::TraitPath" + "Proxy".
+                                                            let mut tr_proxy = tr.path.clone();
+                                                            let tr_proxy_ident = tr_proxy.segments.last_mut().unwrap();
+                                                            tr_proxy_ident.ident = format_ident!("{}Proxy", tr_proxy_ident.ident);
+                                                            parse_quote! {
+                                                                return (domain_, ::alloc::boxed::Box::new(#tr_proxy::new(domain_id_, rtn_)));
+                                                            }
+                                                        }
+                                                        syn::TypeParamBound::Lifetime(_) => unimplemented!(),
+                                                    }
+                                                },
+                                                _ => panic!("Expecting a boxed trait object but get {:#?}.", usr_ep_rtn),
+                                            }
+                                        },
+                                        syn::Type::Tuple(tu) => {
+                                            assert!(tu.elems.is_empty());
+                                            parse_quote! {
+                                                return (domain_, rtn_);
+                                            }
+                                        }
+                                        _ => panic!("Invalid usr_ep return type: {:?}", usr_ep_rtn)
+                                    }
+                                }
+                                _ => panic!("Invalid domain create return type: {:?}", ty),
+                            }
+                        }
+                    };
+
+                    let selfless_args = super::utils::get_selfless_args(sig.inputs.iter());                      
+                    let rtn = Some(ImplItem::Method(parse_quote! {
+                        #sig {
+                            let (domain_, rtn_) = self.#name.#ident(#(#selfless_args),*);
+                            let domain_id_ = domain_.get_domain_id();
+                            #proxy_rtn_stmt
+                        }
+                    }));
+                    drop(selfless_args);
+                    rtn
+                },
+                _ => None,
+            }
+        }).collect();
+
+        // Generate the impl block
+        Item::Impl(parse_quote! {
+            #[cfg(feature = "proxy")]
+            impl #path for #proxy_struct_ident {
+                #(#impl_fns)*
+            }          
+        })
+    }));
+
+    // Return the generated items.
+    generated_items
+}
+
+
 /// Generate trampolines for `methods`.
 fn generate_trampolines(
     trait_ident: &Ident,
+    proxy_ident: &Ident,
     methods: &[TraitItemMethod],
 ) -> proc_macro2::TokenStream {
     let trampolines = methods.iter()
@@ -124,7 +302,7 @@ fn generate_trampolines(
                 #[cfg(feature = "proxy")]
                 #[no_mangle]
                 extern fn #trampoline_ident(#domain_variable_ident: &alloc::boxed::Box<dyn #trait_ident>, #args) #return_ty {
-                    #domain_variable_ident.#ident(#args)
+                    (&**#domain_variable_ident).#ident(#args)
                 }
     
                 // When the call panics, the continuation stack will jump this function.
@@ -200,8 +378,9 @@ fn generate_proxy_impl_one(
     let return_ty = &sig.output;
     parse_quote! {
         fn #ident(#args) #return_ty {
+            // This is no longer needed because we can get domain_id from binary region.
             // move thread to next domain
-            let caller_domain = unsafe { ::libsyscalls::syscalls::sys_update_current_domain_id(self.domain_id) };
+            // let caller_domain = unsafe { ::libsyscalls::syscalls::sys_update_current_domain_id(self.domain_id) };
 
             #[cfg(not(feature = "trampoline"))]
             let r = self.domain.#ident(#cleaned_args);
@@ -214,7 +393,7 @@ fn generate_proxy_impl_one(
             }
 
             // move thread back
-            unsafe { ::libsyscalls::syscalls::sys_update_current_domain_id(caller_domain) };
+            // unsafe { ::libsyscalls::syscalls::sys_update_current_domain_id(caller_domain) };
 
             r
         }

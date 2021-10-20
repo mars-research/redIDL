@@ -1,357 +1,455 @@
-use super::{symbol_tree::*, utils::is_public};
-use crate::expect;
-use crate::type_resolution::symbol_tree::PATH_MODIFIERS;
-use log::{debug, info, trace};
+use lazy_static::lazy_static;
+use log::{info, trace};
 
-use std::borrow::{Borrow, BorrowMut};
+use std::{
+    borrow::Borrow,
+    collections::{HashMap},
+};
 use syn::{
-    spanned::Spanned, File, FnArg, Ident, Item, ItemTrait, ItemUse, Path, PathSegment, ReturnType,
-    TraitItem, TraitItemMethod, Type, UseTree, Visibility,
+    Expr, ExprLit, File, FnArg, GenericArgument, Ident, Item, ItemTrait, Lit, Path, PathArguments,
+    PathSegment, ReturnType, TraitItem, TraitItemMethod, Type,
 };
 
-const DEFINITION_POPULATION_TARGET: &str = "definition_population";
-const RELATIVE_PATH_TARGET: &str = "relative_path_resolution";
+use super::symbol_tree::*;
+use super::utils::*;
+
+lazy_static! {
+    static ref RREF_PATH: Vec<String> = vec![
+        String::from("crate"),
+        String::from("rref"),
+        String::from("rref"),
+        String::from("RRef"),
+    ];
+}
 
 pub struct TypeResolver {
-    /// A stack of maps a PathSegment to its fully qualified path.
+    /// The root module node, i.e. the `crate` node.
     symbol_tree: SymbolTree,
-    /// The current module(aka current frame).
+    /// The current module node that's used in recursive calls.
     current_module: Module,
 }
 
 impl TypeResolver {
-    pub fn new() -> Self {
-        let symbol_tree = SymbolTree::new();
-        let root = symbol_tree.root_module();
+    pub fn new(symbol_tree: SymbolTree) -> Self {
+        let symbol_tree_node = symbol_tree.root_module();
         Self {
             symbol_tree,
-            current_module: root,
+            current_module: symbol_tree_node,
         }
     }
 
-    /// Takes a AST and returns a list of fully-qualified paths of all `RRef`ed types.
-    pub fn resolve_types(mut self, ast: &File) -> SymbolTree {
-        self.resolve_types_recursive(&ast.items);
-        self.resolve_relative_paths_recursive_for_module(self.current_module.clone());
-        self.symbol_tree
+    /// Rewrite the ast such that types that we are interested in are in their fully-qualified paths.
+    /// The types that we are interested in right now are the types in the trait methods.
+    /// If the type-in-interest contains generic, the generic will be resolved.
+    /// If the generic contains a constant, the constant will be resolved to a literal.
+    pub fn resolve_types(mut self, ast: &mut File) {
+        self.resolve_type_in_items(&mut ast.items);
     }
 
-    /// Returns the resolved/terminal path of `module_item`.
-    fn resolve_relative_paths_recursive_for_symbol_tree_node(&mut self, node: SymbolTreeNode) {
-        let node_ref = node.borrow();
-        trace!(
-            target: RELATIVE_PATH_TARGET,
-            "Resolving relative path for {:?} in {:?}",
-            node_ref,
-            self.current_module.borrow().path
-        );
+    fn resolve_type_in_items(&mut self, items: &mut [syn::Item]) {
+        for item in items.iter_mut() {
+            self.resolve_type_in_item(item)
+        }
+    }
 
-        // If the node is a non-module terminal node, nothing need to be done here.
-        // If the node is a module, recursively go into the module and resolve relative paths there.
-        if let Some(terminal) = &node_ref.terminal {
-            match &terminal.definition {
-                Definition::Module(item) => {
-                    // Go to the children frame and do recursive call.
-                    let old_frame = self.current_module.clone();
-                    self.current_module = item.clone();
-                    self.resolve_relative_paths_recursive_for_module(self.current_module.clone());
-                    // Pop the frame and return back to the old frame.
-                    let parent_frame = self
+    fn resolve_type_in_item(&mut self, item: &mut syn::Item) {
+        match item {
+            Item::Mod(md) => {
+                info!("Finding `RRef`ed for module {:?}", md.ident);
+                if let Some((_, items)) = &mut md.content {
+                    // Push a frame
+                    let current_node = self.current_module.borrow();
+                    let next_frame = current_node.get(&md.ident);
+                    let next_frame = crate::expect!(
+                        next_frame,
+                        "Module {:?} not found in {:#?}",
+                        md.ident,
+                        current_node
+                    );
+                    let next_frame = match &next_frame
+                        .borrow()
+                        .terminal
+                        .as_ref()
+                        .expect("Expecting a module; found unresolved.")
+                        .definition
+                    {
+                        Definition::Module(md) => md.clone(),
+                        _ => panic!("Expecting a module, not a symbol."),
+                    };
+                    drop(current_node);
+                    self.current_module = next_frame;
+                    // Recurse into the new frame.
+                    self.resolve_type_in_items(items);
+                    // Pop a frame
+                    let parent_module = self
                         .current_module
                         .borrow()
                         .node
                         .borrow()
                         .get_parent_module();
-
-                    self.current_module = parent_frame;
-                    // Sanity check that we are actually restoring to the correct frame.
-                    assert!(old_frame.same(&self.current_module));
-
-                    // We don't need to update the path
-                    return;
-                }
-                Definition::Builtin
-                | Definition::Type(_)
-                | Definition::ForeignType(_)
-                | Definition::Literal(_) => {
-                    // noop. Non-module terminal node; no further resolution is needed.
-                    return;
+                    self.current_module = parent_module;
                 }
             }
+            Item::Trait(tr) => {
+                self.resolve_type_in_trait(tr);
+            }
+            Item::Const(_) => {}
+            Item::Enum(_) => {}
+            Item::ExternCrate(_) => {}
+            Item::Fn(_) => {}
+            Item::ForeignMod(_) => {}
+            Item::Impl(_) => {}
+            Item::Macro(_) => {}
+            Item::Macro2(_) => {}
+            Item::Static(_) => {}
+            Item::Struct(_) => {}
+            Item::TraitAlias(_) => {}
+            Item::Type(_) => {}
+            Item::Union(_) => {}
+            Item::Use(_) => {}
+            Item::Verbatim(_) => {}
+            Item::__Nonexhaustive => {}
+        }
+    }
+
+    fn resolve_type_in_trait(&mut self, tr: &mut ItemTrait) {
+        for item in &mut tr.items {
+            if let TraitItem::Method(method) = item {
+                self.resolve_type_in_method(method);
+            }
+        }
+    }
+
+    fn resolve_type_in_method(&mut self, method: &mut TraitItemMethod) {
+        for arg in &mut method.sig.inputs {
+            self.resolve_type_in_fnarg(arg);
+        }
+        self.resolve_type_in_returntype(&mut method.sig.output);
+    }
+
+    fn resolve_type_in_fnarg(&mut self, arg: &mut FnArg) {
+        if let FnArg::Typed(ty) = arg {
+            self.resolve_type_in_type(&mut ty.ty, None);
+        }
+    }
+
+    fn resolve_type_in_returntype(&mut self, rtn: &mut ReturnType) {
+        if let ReturnType::Type(_, ty) = rtn {
+            self.resolve_type_in_type(ty, None);
+        }
+    }
+
+    /// Resolve type, put the type and the nested types, if there's any, into the typelist, and
+    /// return the resolved type.
+    fn resolve_type_in_type(
+        &mut self,
+        ty: &mut Type,
+        generic_args: Option<&HashMap<Ident, GenericResult>>,
+    ) -> GenericResult {
+        match ty {
+            Type::Array(arr) => {
+                // Resolve the type.
+                let mut resolved_type = arr.clone();
+                resolved_type.elem = box self.resolve_type_in_type(&mut arr.elem, generic_args).ty();
+
+                // Resolve the length to a literal
+                resolved_type.len = match &mut arr.len {
+                    Expr::Lit(lit) => Expr::Lit(lit.clone()),
+                    Expr::Path(path) => {
+                        let path = &mut path.path;
+                        let mut rtn = None;
+
+                        // If the path is a generic argument, return it's mapping
+                        if let Some(ident) = path.get_ident() {
+                            if let Some(generic_args) = generic_args {
+                                if let Some(generic_param) = generic_args.get(ident) {
+                                    match generic_param {
+                                        GenericResult::Type(x) => panic!(
+                                            "Expecting a generic literal, not a type. {:?}",
+                                            x
+                                        ),
+                                        GenericResult::Literal(lit) => {
+                                            rtn = Some(Expr::Lit(ExprLit {
+                                                attrs: vec![],
+                                                lit: lit.clone(),
+                                            }))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Otherwise, walk the path and resolve it to a literal.
+                        if rtn.is_none() {
+                            let (path, node) = self.resolve_path(path, generic_args);
+                            let node = crate::expect!(node, "Array length experssion must not contains paths from external crates.\nType: {:?}\nForeign path: {:?}", ty, path);
+                            let lit = match &node
+                                .borrow()
+                                .terminal
+                                .as_ref()
+                                .expect("expecting a literal; found unresolved")
+                                .definition
+                            {
+                                Definition::Literal(lit) => Expr::Lit(ExprLit {
+                                    attrs: vec![],
+                                    lit: lit.clone(),
+                                }),
+                                _ => panic!(),
+                            };
+                            rtn = Some(lit);
+                        }
+
+                        rtn.unwrap()
+                    }
+                    _ => unimplemented!(),
+                };
+
+                // Rewrite the type to the resolved one.
+                *arr = resolved_type.clone();
+                let resolved_type = Type::Array(resolved_type);
+                GenericResult::Type(resolved_type)
+            }
+            Type::Path(path) => {
+                // Use the type parameter to resolve the path, if there's a matching one.
+                if let Some(generic_args) = generic_args {
+                    // The path is one single ident, which could be a generic argument.
+                    if let Some(path) = path.path.get_ident() {
+                        if let Some(resolved_type) = generic_args.get(path) {
+                            return resolved_type.clone();
+                        }
+                    }
+                }
+
+                // Resolve the path and rewrite the type to the resolved one.
+                let mut resolved_type = path.clone();
+                resolved_type.path = self.resolve_path(&mut path.path, generic_args).0;
+                *path = resolved_type.clone();
+                let resolved_type = Type::Path(resolved_type);
+                GenericResult::Type(resolved_type)
+            }
+            Type::Tuple(tu) => {
+                let mut resolved_type = tu.clone();
+                for elem in &mut resolved_type.elems {
+                    *elem = self.resolve_type_in_type(elem, generic_args).ty();
+                }
+                *tu = resolved_type.clone();
+                let resolved_type = Type::Tuple(resolved_type);
+                GenericResult::Type(resolved_type)
+            }
+            Type::BareFn(x) => unimplemented!("{:#?}", x),
+            Type::Group(x) => unimplemented!("{:#?}", x),
+            Type::ImplTrait(x) => unimplemented!("{:#?}", x),
+            Type::Infer(x) => unimplemented!("{:#?}", x),
+            Type::Macro(_) => panic!("There's shouldn't be unexpended any macro at this point."),
+            Type::Never(x) => unimplemented!("{:#?}", x),
+            Type::Paren(x) => unimplemented!("{:#?}", x),
+            Type::Ptr(ptr) => {
+                GenericResult::Type(self.resolve_type_in_type(&mut ptr.elem, generic_args).ty())
+            }
+            Type::Reference(reference) => {
+                GenericResult::Type(self.resolve_type_in_type(&mut reference.elem, generic_args).ty())
+            }
+            Type::Slice(slice) => {
+                let mut resolved_type = slice.clone();
+                *resolved_type.elem = self
+                    .resolve_type_in_type(&mut resolved_type.elem, generic_args)
+                    .ty();
+                let resolved_type = Type::Slice(resolved_type);
+                GenericResult::Type(resolved_type)
+            }
+            Type::TraitObject(tr) => {
+                let mut resolved_type = tr.clone();
+                for bound in resolved_type.bounds.iter_mut() {
+                    match bound {
+                        syn::TypeParamBound::Trait(tr) => {
+                            tr.path = self.resolve_path(&mut tr.path, generic_args).0;
+                        }
+                        syn::TypeParamBound::Lifetime(_) => {}
+                    }
+                }
+                *tr = resolved_type.clone();
+                let resolved_type = Type::TraitObject(resolved_type);
+                GenericResult::Type(resolved_type)
+            }
+            Type::Verbatim(x) => unimplemented!("{:#?}", x),
+            Type::__Nonexhaustive => unimplemented!(),
+        }
+    }
+
+    /// Resolve path in the current module and return the resolved path and its corresponding node,
+    /// if it doesn't come from an external crate.
+    /// The path itself must not be a generic argument, which means it should be resolved in other
+    /// manner without calling this function.
+    /// If the path is resolved into a struct, it will recursively goes in the struct to add any
+    /// `RRef`ed member variables.
+    fn resolve_path(
+        &mut self,
+        path: &mut Path,
+        generic_args: Option<&HashMap<Ident, GenericResult>>,
+    ) -> (Path, Option<SymbolTreeNode>) {
+        trace!(
+            "Resolving path {:?} with generic_args {:?}",
+            path,
+            generic_args
+        );
+        let mut current_node = self.current_module.clone();
+        let mut path_segments: Vec<PathSegment> = path.segments.iter().cloned().collect();
+
+        // If the path starts with `::` and doesn't come from `crate` or `super, or it comes from
+        // some unknown module(external module), we know that it's already fully qualified.
+        if path.leading_colon.is_some()
+            && PATH_MODIFIERS.contains(&path.segments.first().unwrap().ident.to_string())
+            || current_node.borrow().get(&path_segments[0].ident).is_none()
+        {
+            return (path.clone(), None);
         }
 
-        // Walk the relative path and try resolving the path.
-        // Save the previous node because we there's no way to know the parent of a type currently.
-        let mut current_node = match node_ref.leading_colon {
-            true => self.symbol_tree.root.clone(),
-            false => self.current_module.borrow().node.clone(),
-        };
+        // Walk the module tree and resolve the type.
+        let mut final_segment = path_segments.remove(path_segments.len() - 1);
+        for path_segment in path_segments {
+            if path_segment.arguments != PathArguments::None {
+                panic!("Path arguments(e.g. generics) is not supported in the inner path segments.\nViolating path: {:?}\nPath segment: {:?}", path, path_segment);
+            }
 
-        for path_segment in &node_ref.path {
-            trace!("Resolving path segment {:?}", path_segment);
-            // Borrow it seperately so that we can assign to `current_node` later.
-            let terminal = current_node.borrow().terminal.clone();
-
-            // Resolve the path_segment into a node.
-            match &expect!(
-                terminal.as_ref(),
-                "Expecting a module, found non-terminal: {:?}",
+            let current_node_ref = current_node.borrow();
+            let next_node = current_node_ref.get(&path_segment.ident);
+            let next_node = crate::expect!(
+                next_node,
+                "Unable to find {:?} in {:#?}",
+                path_segment.ident,
                 current_node
             )
-            .definition
+            .clone();
+            drop(current_node_ref);
+            let next_node = next_node.borrow();
+            current_node = match &next_node
+                .terminal
+                .as_ref()
+                .expect("Expecting module, found unresolved")
+                .definition
             {
-                Definition::Type(_) => panic!(
-                    "Resolving {:#?} for {:#?}. Node {:#?} is a symbol and cannot have child.",
-                    path_segment, node_ref.path, current_node
-                ),
                 Definition::Module(md) => {
-                    let md = md.borrow();
-                    let next_node = md.get(path_segment);
-                    let next_node = crate::expect!(
-                        next_node,
-                        "When resolving {:?}, ident {:?} is not found in {:#?}",
-                        node_ref.path,
-                        path_segment,
-                        md
-                    );
-                    assert!(next_node.borrow().public);
-                    current_node = next_node.clone();
+                    assert!(next_node.public);
+                    md.clone()
                 }
-                _ => panic!(),
-            }
+                _ => panic!(
+                    "Resolving {:#?} for {:#?}. Node {:#?} is a symbol and cannot have child.",
+                    path_segment,
+                    current_node.borrow().node.borrow().path,
+                    next_node
+                ),
+            };
         }
 
-        // Keep resolving recursively if the node that we get from resolving is not
-        // terminal.
-        // If the node is a module, we can treat it as terminal. It's up to the user to
-        // resolve their types that in the module.
-        if current_node.borrow().terminal.is_none() {
-            self.resolve_relative_paths_recursive_for_symbol_tree_node(current_node.clone());
-        }
-        assert!(
-            current_node.borrow().terminal.is_some(),
-            "Node is not terminal: {:#?}",
-            current_node
-        );
-        // Copy the terminal node and absolute path to us.
-        debug!(
-            target: RELATIVE_PATH_TARGET,
-            "{:?} is resolved to {:?}",
-            node_ref.path,
-            current_node.borrow().path
-        );
-        drop(node_ref);
-
-        // Update the node to a terminal node.
-        let mut node = node.borrow_mut();
-        let resolved_node = current_node.borrow();
-        node.terminal = resolved_node.terminal.clone();
-        node.path = resolved_node.path.clone();
-    }
-
-    /// Resolve all relative paths generated `resolve_types_recursive` by into terminal
-    /// paths.
-    fn resolve_relative_paths_recursive_for_module(&mut self, module: Module) {
-        let module_path = &module.borrow().path;
-        info!(
-            target: RELATIVE_PATH_TARGET,
-            "Resolving relative path for module {:?}", module_path
-        );
-        for (ident, child) in module.borrow().iter() {
-            trace!(
-                "Resolving relative path for symbol {:?} in module {:?}",
-                ident,
-                module_path
-            );
-            // If the module is a path modifier, noop.
-            if PATH_MODIFIERS.get(&ident.to_string()).is_some() {
-                trace!("Encountered path modifiler {:?}; noop", ident);
-                continue;
-            }
-            self.resolve_relative_paths_recursive_for_symbol_tree_node(child.clone());
-        }
-    }
-
-    /// Recursively add relative paths and terminal nodes into the module. The relative paths
-    /// need to be resolved into terminal paths later.
-    fn resolve_types_recursive(&mut self, items: &[syn::Item]) {
-        for og_item in items.iter() {
-            match og_item {
-                Item::Const(item) => {
-                    let mut path = self.current_module.borrow().node.borrow().path.clone();
-                    path.push(item.ident.clone());
-                    match &*item.expr {
-                        syn::Expr::Lit(lit) => {
-                            // Create a new node.
-                            let node = SymbolTreeNode::new(
-                                item.ident.clone(),
-                                is_public(&item.vis),
-                                Some(self.current_module.borrow().node.clone()),
-                                None,
-                                true,
-                                path,
-                            );
-                            // Update its terminal
-                            node.borrow_mut().terminal = Some(Terminal::new(
-                                node.clone(),
-                                Definition::Literal(lit.lit.clone()),
-                            ));
-                            // Insert the node into the current module.
-                            self.current_module
-                                .borrow_mut()
-                                .insert(item.ident.clone(), node)
-                                .expect_none("type node shouldn't apprear more than once");
-                        }
-                        _ => self.add_definition_symbol(&item.ident, &item.vis, &og_item),
-                    }
-                }
-                Item::Enum(item) => {
-                    self.add_definition_symbol(&item.ident, &item.vis, &og_item);
-                }
-                Item::Mod(item) => {
-                    if let Some((_, items)) = &item.content {
-                        // Push a frame.
-                        self.current_module =
-                            self.current_module.create_module(&item.ident, &item.vis);
-                        // Recurse into the new frame.
-                        self.resolve_types_recursive(items);
-                        // Pop a frame.
-                        let old_frame = self
-                            .current_module
-                            .borrow()
-                            .node
-                            .borrow()
-                            .get_parent_module();
-                        self.current_module = old_frame;
-                    }
-                }
-                Item::Struct(item) => {
-                    self.add_definition_symbol(&item.ident, &item.vis, &og_item);
-                }
-                Item::Trait(item) => {
-                    self.add_definition_symbol(&item.ident, &item.vis, &og_item);
-                }
-                Item::Type(item) => {
-                    self.add_definition_symbol(&item.ident, &item.vis, &og_item);
-                }
-                Item::Union(item) => {
-                    self.add_definition_symbol(&item.ident, &item.vis, &og_item);
-                }
-                Item::Fn(item) => {
-                    self.add_definition_symbol(&item.sig.ident, &item.vis, &og_item);
-                }
-                Item::Use(item) => {
-                    let path = vec![];
-                    self.resolve_types_in_usetree_recursive(
-                        &item.tree,
-                        &item.vis,
-                        path,
-                        item.leading_colon.is_some(),
-                    );
-                }
-                _ => {}
-            }
-        }
-    }
-
-    fn resolve_types_in_usetree_recursive(
-        &mut self,
-        tree: &UseTree,
-        vis: &Visibility,
-        mut path: Vec<Ident>,
-        leading_colon: bool,
-    ) {
-        match tree {
-            // e.g. `a::b::{Baz}`. A Tree.
-            syn::UseTree::Path(tree) => {
-                if tree.ident == "self" {
-                    path = self.current_module.borrow().node.borrow().path.clone();
-                } else {
-                    path.push(tree.ident.clone());
-                }
-                self.resolve_types_in_usetree_recursive(&tree.tree, vis, path, leading_colon);
-            }
-            // e.g. `Baz`. Leaf node.
-            syn::UseTree::Name(tree) => {
-                path.push(tree.ident.clone());
-                self.add_use_symbol(&tree.ident, vis, path, leading_colon);
-            }
-            // e.g. `Baz as Barz`. Leaf node but renamed.
-            syn::UseTree::Rename(tree) => {
-                path.push(tree.ident.clone());
-                self.add_use_symbol(&tree.rename, vis, path, leading_colon);
-            }
-            // e.g. `a::*`. This is banned because pulling the depencies in and analyze them is not
-            // within the scope of this project.
-            syn::UseTree::Glob(tree) => {
-                panic!("Use globe is disallowed in IDL. For example, you cannot do `use foo::*`. Violating code: {:#?}, {:?}", tree, path)
-            }
-            // e.g. `{b::{Barc}, Car}`.
-            syn::UseTree::Group(tree) => {
-                for tree in &tree.items {
-                    self.resolve_types_in_usetree_recursive(
-                        &tree,
-                        vis,
-                        path.clone(),
-                        leading_colon,
-                    );
-                }
-            }
-        }
-    }
-
-    /// Add a symbol from a `use` statement to the corrent scope.
-    fn add_use_symbol(
-        &mut self,
-        ident: &Ident,
-        vis: &Visibility,
-        path: Vec<Ident>,
-        leading_colon: bool,
-    ) {
-        // Create a new node for the symbol.
-        let node = SymbolTreeNode::new(
-            ident.clone(),
-            is_public(vis),
-            Some(self.current_module.borrow().node.clone()),
-            None,
-            leading_colon,
-            path.clone(),
-        );
-
-        // If the path doesn't start with "crate" or "super", this means that it comes from
-        // an external library, which means we should mark it as terminal.
-        let first_segment = &path[0];
-        if PATH_MODIFIERS.get(&first_segment.to_string()).is_none() {
-            node.borrow_mut().terminal =
-                Some(Terminal::new(node.clone(), Definition::ForeignType(path)));
+        let current_node_ref = current_node.borrow();
+        let final_node = current_node_ref.get(&final_segment.ident);
+        let final_node = crate::expect!(
+            final_node,
+            "Unable to find {:?} in {:#?}",
+            final_segment.ident,
+            current_node_ref
+        )
+        .clone();
+        drop(current_node_ref);
+        let final_node_ref = final_node.borrow();
+        let mut resolved_path = match &final_node_ref.terminal.as_ref().unwrap().definition {
+            Definition::Module(md) => panic!("Expecting a type, but found a module. {:?}", md),
+            _ => idents_to_path(&final_node_ref.path),
         };
+        drop(final_node_ref);
 
-        // Add the symbol to the module.
-        self.current_module
-            .borrow_mut()
-            .insert(ident.clone(), node)
-            .expect_none("type node shouldn't apprear more than once");
+        // Resolve the generic arguments and rewrite the AST.
+        self.resolve_path_arguments(&mut final_segment.arguments, generic_args);
+        *resolved_path.segments.last_mut().unwrap() = final_segment;
+
+        trace!("Path {:?} is resolved to {:?}.", path, resolved_path);
+        *path = resolved_path.clone();
+        (resolved_path, Some(final_node.clone()))
     }
 
-    /// Add a symbol that's defined in the current scope. The symbol is terminal.
-    fn add_definition_symbol(&mut self, ident: &Ident, vis: &Visibility, definition: &Item) {
-        // Construct fully qualified path.
-        let mut path = self.current_module.borrow().node.borrow().path.clone();
-        path.push(ident.clone());
+    /// Resolve any types or constants in the path argument and returns the resolved path arguments back.
+    fn resolve_path_arguments(
+        &mut self,
+        arguments: &mut PathArguments,
+        generic_args: Option<&HashMap<Ident, GenericResult>>,
+    ) {
+        let mut resolved_arguments = arguments.clone();
+        if let PathArguments::AngleBracketed(generic) = &mut resolved_arguments {
+            for arg in generic.args.iter_mut() {
+                trace!("Resolving generic argument {:?}", arg);
+                let resolved_arg: Option<GenericArgument> = match arg {
+                    syn::GenericArgument::Lifetime(_) => {
+                        /* noop */
+                        None
+                    }
+                    syn::GenericArgument::Type(ty) => {
+                        // It is possible that `ty` is resolved into a constant literal.
+                        Some(self.resolve_type_in_type(ty, generic_args).into())
+                    }
+                    syn::GenericArgument::Binding(x) => unimplemented!("{:#?}", x),
+                    syn::GenericArgument::Constraint(x) => unimplemented!("{:#?}", x),
+                    syn::GenericArgument::Const(expr) => {
+                        let lit = match expr {
+                            syn::Expr::Lit(lit) => lit.lit.clone(),
+                            syn::Expr::Path(path) => {
+                                let (path, node) = self.resolve_path(&mut path.path, generic_args);
+                                let node = crate::expect!(node, "Generic experssion must not contains paths from external crates.\nPath arguments: {:?}\nForeign path: {:?}", arguments, path);
+                                let lit = match &node.borrow().terminal.as_ref().unwrap().definition {
+                                    Definition::Literal(lit) => lit.clone(),
+                                    _ => panic!("All generic constants must be able to resolved to a compile time constant.\nPath: {:?}\nNode: {:?}", path, node.borrow()),
+                                };
+                                lit
+                            }
+                            _ => unimplemented!(),
+                        };
+                        Some(GenericArgument::Const(Expr::Lit(ExprLit {
+                            attrs: vec![],
+                            lit,
+                        })))
+                    }
+                };
 
-        // Add symbol.
-        let node = SymbolTreeNode::new(
-            ident.clone(),
-            is_public(vis),
-            Some(self.current_module.borrow().node.clone()),
-            None,
-            true,
-            path,
-        );
-        node.borrow_mut().terminal = Some(Terminal::new(
-            node.clone(),
-            Definition::Type(definition.clone()),
-        ));
-        self.current_module.borrow_mut().insert(ident.clone(), node.clone()).expect_none(&format!("Trying to insert {:?} but already exist. Type node shouldn't apprear more than once", node));
+                if let Some(resolved_arg) = resolved_arg {
+                    *arg = resolved_arg;
+                }
+            }
+        }
+        *arguments = resolved_arguments;
+    }
+}
+
+/// An enum represents what a generic argument can resolved into.
+/// In this compiler, a generic argument can be resolved into a type or a constant literal.
+#[derive(Debug, Clone)]
+enum GenericResult {
+    Type(Type),
+    Literal(Lit),
+}
+
+#[allow(dead_code)]
+impl GenericResult {
+    fn ty(self) -> Type {
+        match self {
+            GenericResult::Type(ty) => ty,
+            GenericResult::Literal(lit) => panic!("Expecting a type, but found {:#?}", lit),
+        }
+    }
+
+    fn lit(self) -> Lit {
+        match self {
+            GenericResult::Literal(lit) => lit,
+            GenericResult::Type(ty) => panic!("Expecting a literal, but found {:#?}", ty),
+        }
+    }
+}
+
+impl Into<GenericArgument> for GenericResult {
+    fn into(self) -> GenericArgument {
+        match self {
+            GenericResult::Type(ty) => GenericArgument::Type(ty),
+            GenericResult::Literal(lit) => {
+                GenericArgument::Const(Expr::Lit(ExprLit { attrs: vec![], lit }))
+            }
+        }
     }
 }

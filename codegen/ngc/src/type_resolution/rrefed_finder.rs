@@ -54,7 +54,7 @@ impl RRefedFinder {
                         .segments
                         .iter()
                         .map(|seg| seg.ident.to_string())
-                        .eq(RREF_PATH.iter().map(|x| x.clone()))
+                        .eq(RREF_PATH.iter().cloned())
                     {
                         match &path.segments.last().unwrap().arguments {
                             PathArguments::AngleBracketed(argumnents) => {
@@ -578,6 +578,7 @@ enum GenericResult {
     Literal(Lit),
 }
 
+#[allow(dead_code)]
 impl GenericResult {
     fn ty(self) -> Type {
         match self {

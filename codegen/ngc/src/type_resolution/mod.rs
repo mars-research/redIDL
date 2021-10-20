@@ -1,9 +1,10 @@
 use log::info;
 use syn::{parse_quote, Item, Type};
 
-pub mod rrefed_finder;
-pub mod symbol_tree;
 pub mod type_resolver;
+pub mod symbol_tree;
+pub mod type_info_finder;
+pub mod rrefed_finder;
 mod utils;
 
 #[cfg(test)]
@@ -13,14 +14,19 @@ mod rrefed_finder_test;
 
 pub fn generate_typeid(ast: &mut syn::File) {
     // Resolve types
+    info!("Finding type info");
+    let type_info_finder = type_info_finder::TypeInfoFinder::new();
+    let symbol_tree = type_info_finder.find_type_info(ast);
+
+    // Resolve types
     info!("Resolving types");
-    let type_resolver = type_resolver::TypeResolver::new();
-    let symbol_tree = type_resolver.resolve_types(&ast);
+    let type_resolver = type_resolver::TypeResolver::new(symbol_tree.clone());
+    type_resolver.resolve_types(ast);
 
     // Find all `RRef`ed types
     info!("Finding `RRef`ed types");
-    let rref_finder = rrefed_finder::RRefedFinder::new(symbol_tree);
-    let rrefed_types: Vec<Type> = rref_finder.find_rrefed(&ast).into_iter().collect();
+    let rrefed_finder = rrefed_finder::RRefedFinder::new(symbol_tree);
+    let rrefed_types: Vec<Type> = rrefed_finder.find_rrefed(ast).into_iter().collect();
 
     // Generate code
     info!("Generating `TypeIdentifiable`");
