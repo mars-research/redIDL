@@ -17,6 +17,36 @@ pub enum DomainCreateComponent {
     Heap,
 }
 
+impl DomainCreateComponent {
+    fn creation_statement(&self) -> syn::Stmt {
+        match self {
+            &DomainCreateComponent::Domain => parse_quote! {
+                let pdom_ = ::alloc::boxed::Box::new(crate::syscalls::PDomain::new(::alloc::sync::Arc::clone(&dom_)));
+            },
+            &DomainCreateComponent::MMap => parse_quote! {
+                let pmmap_ = ::alloc::boxed::Box::new(crate::syscalls::Mmap::new());
+            },
+            &DomainCreateComponent::Heap => parse_quote! {
+                let pheap_ = ::alloc::boxed::Box::new(crate::heap::PHeap::new());
+            },
+        }
+    }
+
+    fn as_fn_argument(&self) -> syn::FnArg {
+        match self {
+            &DomainCreateComponent::Domain => parse_quote! {
+                pdom_: ::alloc::boxed::Box<dyn syscalls::Syscall>
+            },
+            &DomainCreateComponent::MMap => parse_quote! {
+                pmmap_: ::alloc::boxed::Box<dyn syscalls::Mmap>
+            },
+            &DomainCreateComponent::Heap => parse_quote! {
+                pheap_: ::alloc::boxed::Box<dyn syscalls::Heap>
+            },
+        }
+    }
+}
+
 /// This generates a public fn and a impl method.
 /// This public fn is exposed to the kernel while the impl method is exposed to the users.
 pub fn generate_domain_create_for_trait_method(
@@ -71,43 +101,28 @@ pub fn generate_domain_create_for_trait_method(
     info!("SELFLESS: {:#?}", selfless_args);
 
     // Statements to initialize the components needed by the domain
-    let domain_component_creation = domain_components.iter().map(|component| {
-        match component {
-            &DomainCreateComponent::Domain => parse_quote! {
-                let pdom_ = ::alloc::boxed::Box::new(crate::syscalls::PDomain::new(::alloc::sync::Arc::clone(&dom_)));
-            },
-            &DomainCreateComponent::MMap => parse_quote! {
-                let pmmap_ = ::alloc::boxed::Box::new(crate::syscalls::Mmap::new());
-            },
-            &DomainCreateComponent::Heap => parse_quote! {
-                let pheap_ = ::alloc::boxed::Box::new(crate::heap::PHeap::new());
-            }
-        }
-    }).collect::<Vec<syn::Stmt>>();
-
-    info!("MADE IT!");
-
-    let domain_entrypoint_components: Vec<FnArg> = domain_components
+    let domain_component_creation = domain_components
         .iter()
-        .map(|component| match component {
-            &DomainCreateComponent::Domain => parse_quote! {
-                pdom_: ::alloc::boxed::Box<dyn syscalls::Syscall>
-            },
-            &DomainCreateComponent::MMap => parse_quote! {
-                pmmap_: ::alloc::boxed::Box<dyn syscalls::Mmap>
-            },
-            &DomainCreateComponent::Heap => parse_quote! {
-                pheap_: ::alloc::boxed::Box<dyn syscalls::Heap>
-            },
-        })
-        .collect();
+        .map(|component| component.creation_statement())
+        .collect::<Vec<syn::Stmt>>();
 
-    info!("MADE IT 2! {:#?}", domain_entrypoint_components);
+    let domain_components_as_fn_args = domain_components
+        .iter()
+        .map(|c| c.as_fn_argument())
+        .collect::<Vec<syn::FnArg>>();
 
-    let entry_point_args: Vec<&FnArg> = domain_entrypoint_components
+    let entry_point_args: Vec<&FnArg> = domain_components_as_fn_args
         .iter()
         .chain(selfless_args.clone())
         .collect();
+
+    let entry_point_args_no_types = entry_point_args.iter().filter_map(|c| match c {
+        FnArg::Typed(arg) => match arg.pat.as_ref() {
+            syn::Pat::Ident(id) => Some(&id.ident),
+            _ => None,
+        },
+        _ => None,
+    });
 
     // Generate impl method.
     let generated_impl = parse_quote! {
@@ -170,7 +185,7 @@ pub fn generate_domain_create_for_trait_method(
             // Enable interrupts on exit to user so it can be preempted.
             crate::interrupt::enable_irq();
             // Jumps to the domain entry point.
-            let ep_rtn_ = user_ep_(#(#entry_point_args),*);
+            let ep_rtn_ = user_ep_(#(#entry_point_args_no_types),*);
             // Disable interrupts as we are back to the kernel.
             crate::interrupt::disable_irq();
 
