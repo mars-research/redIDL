@@ -1,14 +1,6 @@
-use std::collections::HashMap;
-
-use crate::{has_attribute, remove_attribute};
-
-use log::info;
 use quote::format_ident;
 
-use syn::{
-    parse_quote, Expr, FnArg, Ident, ImplItemMethod, Item, ItemFn, ItemTrait, Lit, Path, TraitItem,
-    TraitItemMethod,
-};
+use syn::{parse_quote, FnArg, TraitItemMethod};
 
 /// This generates a public fn and a impl method.
 /// This public fn is exposed to the kernel while the impl method is exposed to the users.

@@ -1,14 +1,11 @@
 use super::module::Module;
 
 use std::{
-    borrow::Borrow,
     cell::{Ref, RefCell, RefMut},
     rc::Rc,
 };
 
-use syn::{
-    Ident, Item, ItemFn, ItemStruct, ItemTrait, Lit, LitInt, PathSegment, VisPublic, Visibility,
-};
+use syn::{Ident, Item, Lit};
 
 #[derive(Derivative)]
 #[derivative(Debug)]

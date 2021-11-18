@@ -3,11 +3,7 @@ use crate::expect;
 use crate::type_resolution::symbol_tree::PATH_MODIFIERS;
 use log::{debug, info, trace};
 
-use std::borrow::{Borrow, BorrowMut};
-use syn::{
-    spanned::Spanned, File, FnArg, Ident, Item, ItemTrait, ItemUse, Path, PathSegment, ReturnType,
-    TraitItem, TraitItemMethod, Type, UseTree, Visibility,
-};
+use syn::{File, Ident, Item, UseTree, Visibility};
 
 const RELATIVE_PATH_TARGET: &str = "relative_path_resolution";
 

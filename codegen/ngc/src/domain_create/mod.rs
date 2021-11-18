@@ -6,8 +6,7 @@ use log::info;
 use quote::format_ident;
 use std::collections::HashMap;
 use syn::{
-    parse_quote, Expr, FnArg, Ident, ImplItemMethod, Item, ItemFn, ItemTrait, Lit, Path, TraitItem,
-    TraitItemMethod,
+    parse_quote, Expr, Ident, ImplItemMethod, Item, ItemFn, ItemTrait, Lit, Path, TraitItem,
 };
 
 pub const LINKED_DOMAIN_CREATE_ATTR: &str = "domain_create";

@@ -1,12 +1,10 @@
-use std::collections::HashMap;
-
 use crate::{has_attribute, remove_attribute};
 
 use quote::{format_ident, quote};
 use syn::punctuated::Punctuated;
 use syn::{
-    parse_quote, Field, FnArg, Ident, ImplItem, ImplItemMethod, Item, ItemFn, ItemTrait, Path,
-    Token, TraitItem, TraitItemMethod,
+    parse_quote, FnArg, Ident, ImplItem, ImplItemMethod, Item, ItemFn, ItemTrait, Path, Token,
+    TraitItem, TraitItemMethod,
 };
 
 const INTERFACE_ATTR: &str = "interface";
@@ -290,7 +288,7 @@ pub fn generate_proxy(domain_creates: Vec<(Path, ItemTrait)>) -> Vec<Item> {
 /// Generate trampolines for `methods`.
 fn generate_trampolines(
     trait_ident: &Ident,
-    proxy_ident: &Ident,
+    _proxy_ident: &Ident,
     methods: &[TraitItemMethod],
 ) -> proc_macro2::TokenStream {
     let trampolines = methods.iter()

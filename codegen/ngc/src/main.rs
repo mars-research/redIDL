@@ -20,7 +20,7 @@ use clap::{App, Arg, ArgMatches};
 use domain_create::DomainCreateBuilder;
 use log::{info, warn};
 use quote::{format_ident, quote};
-use syn::{parse_quote, Item, ItemMod, Meta, NestedMeta, Type};
+use syn::{parse_quote, Item, Meta, NestedMeta};
 
 fn main() {
     // Initialze logging

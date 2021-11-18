@@ -1,10 +1,6 @@
 use std::iter::FromIterator;
 
-use syn::{
-    punctuated::Punctuated,
-    token::{Colon2, Token},
-    Ident, Path, PathArguments, PathSegment, Type, Visibility,
-};
+use syn::{punctuated::Punctuated, Ident, Path, PathArguments, PathSegment, Visibility};
 
 /// Return truf if the visibility is private.
 pub fn is_prviate(vis: &Visibility) -> bool {
