@@ -363,7 +363,8 @@ impl TypeInfoFinder {
                 .borrow_mut()
                 .insert(ident.clone(), node.clone())
                 .is_none(),
-            "Trying to insert {:?} but already exist. Type node shouldn't apprear more than once"
+            "Trying to insert {:?} but already exist. Type node shouldn't appear more than once",
+            ident.clone()
         );
     }
 }
