@@ -1,10 +1,7 @@
 use lazy_static::lazy_static;
 use log::{info, trace};
 
-use std::{
-    borrow::Borrow,
-    collections::{HashMap},
-};
+use std::{borrow::Borrow, collections::HashMap};
 use syn::{
     Expr, ExprLit, File, FnArg, GenericArgument, Ident, Item, ItemTrait, Lit, Path, PathArguments,
     PathSegment, ReturnType, TraitItem, TraitItemMethod, Type,
@@ -150,7 +147,8 @@ impl TypeResolver {
             Type::Array(arr) => {
                 // Resolve the type.
                 let mut resolved_type = arr.clone();
-                resolved_type.elem = box self.resolve_type_in_type(&mut arr.elem, generic_args).ty();
+                resolved_type.elem =
+                    box self.resolve_type_in_type(&mut arr.elem, generic_args).ty();
 
                 // Resolve the length to a literal
                 resolved_type.len = match &mut arr.len {
@@ -246,9 +244,10 @@ impl TypeResolver {
             Type::Ptr(ptr) => {
                 GenericResult::Type(self.resolve_type_in_type(&mut ptr.elem, generic_args).ty())
             }
-            Type::Reference(reference) => {
-                GenericResult::Type(self.resolve_type_in_type(&mut reference.elem, generic_args).ty())
-            }
+            Type::Reference(reference) => GenericResult::Type(
+                self.resolve_type_in_type(&mut reference.elem, generic_args)
+                    .ty(),
+            ),
             Type::Slice(slice) => {
                 let mut resolved_type = slice.clone();
                 *resolved_type.elem = self

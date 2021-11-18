@@ -5,7 +5,10 @@ use crate::{has_attribute, remove_attribute};
 use log::info;
 use quote::format_ident;
 
-use syn::{Expr, FnArg, Ident, ImplItemMethod, Item, ItemFn, ItemTrait, Lit, Path, TraitItem, TraitItemMethod, parse_quote};
+use syn::{
+    parse_quote, Expr, FnArg, Ident, ImplItemMethod, Item, ItemFn, ItemTrait, Lit, Path, TraitItem,
+    TraitItemMethod,
+};
 
 /// This generates a public fn and a impl method.
 /// This public fn is exposed to the kernel while the impl method is exposed to the users.
@@ -30,18 +33,31 @@ pub fn generate_domain_create_for_trait_method(
     let method_sig = &method.sig;
     let canonicalized_domain_path = domain_path.replace("/", "_");
     let generated_fn_ident = format_ident!("{}_{}", canonicalized_domain_path, method_ident);
-    let domain_start_ident = format_ident!("_binary_domains_build_{}_start", canonicalized_domain_path);
+    let domain_start_ident =
+        format_ident!("_binary_domains_build_{}_start", canonicalized_domain_path);
     let domain_end_ident = format_ident!("_binary_domains_build_{}_end", canonicalized_domain_path);
     let rtn = &method.sig.output;
     let ep_rtn = match &method.sig.output {
         syn::ReturnType::Type(_, ty) => match ty {
             box syn::Type::Tuple(tuple) => {
-                assert_eq!(tuple.elems.iter().count(), 2, "Expecting a tuple of two in the return type of method {:?} of domain {:?}", method_ident, domain_path);
+                assert_eq!(
+                    tuple.elems.iter().count(),
+                    2,
+                    "Expecting a tuple of two in the return type of method {:?} of domain {:?}",
+                    method_ident,
+                    domain_path
+                );
                 tuple.elems.iter().nth(1).unwrap()
-            },
-            _ => panic!("Expecting a tuple of two in the return type of method {:?} of domain {:?}", method_ident, domain_path),
+            }
+            _ => panic!(
+                "Expecting a tuple of two in the return type of method {:?} of domain {:?}",
+                method_ident, domain_path
+            ),
         },
-        syn::ReturnType::Default => panic!("Method {:?} of domain {:?} does not have a return type. Expecting a tuple of two.", method_ident, domain_path),
+        syn::ReturnType::Default => panic!(
+            "Method {:?} of domain {:?} does not have a return type. Expecting a tuple of two.",
+            method_ident, domain_path
+        ),
     };
 
     // Generate impl method.
@@ -59,7 +75,6 @@ pub fn generate_domain_create_for_trait_method(
             rtn_
         }
     };
-
 
     // Generated fn.
     let mut fn_sig = method_sig.clone();

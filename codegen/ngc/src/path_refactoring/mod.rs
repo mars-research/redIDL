@@ -3,8 +3,10 @@
 #[cfg(test)]
 mod tests;
 
-
-use syn::{FnArg, GenericArgument, Ident, Item, ItemTrait, Path, PathArguments, ReturnType, TraitItem, TraitItemMethod, Type};
+use syn::{
+    FnArg, GenericArgument, Ident, Item, ItemTrait, Path, PathArguments, ReturnType, TraitItem,
+    TraitItemMethod, Type,
+};
 
 pub fn refactor_path_in_ast(src: &Ident, dest: &Ident, ast: &mut syn::File) {
     refactor_path_in_items(src, dest, &mut ast.items)
@@ -15,7 +17,6 @@ pub fn refactor_path_in_items(src: &Ident, dest: &Ident, items: &mut [Item]) {
         refactor_path_in_item(src, dest, item)
     }
 }
-
 
 pub fn refactor_path_in_item(src: &Ident, dest: &Ident, item: &mut Item) {
     match item {
@@ -35,7 +36,7 @@ pub fn refactor_path_in_item(src: &Ident, dest: &Ident, item: &mut Item) {
         Item::Type(_) => {}
         Item::Union(_) => {}
         Item::Use(_) => {}
-        _ => {},
+        _ => {}
     }
 }
 
@@ -59,7 +60,6 @@ pub fn refactor_path_in_trait_item(src: &Ident, dest: &Ident, item: &mut TraitIt
     }
 }
 
-
 pub fn refactor_path_in_trait_item_method(src: &Ident, dest: &Ident, method: &mut TraitItemMethod) {
     let sig = &mut method.sig;
     refactor_path_in_return_type(src, dest, &mut sig.output);
@@ -78,9 +78,7 @@ pub fn refactor_path_in_return_type(src: &Ident, dest: &Ident, rtn: &mut ReturnT
 pub fn refactor_path_in_fn_arg(src: &Ident, dest: &Ident, arg: &mut FnArg) {
     match arg {
         FnArg::Receiver(_) => {}
-        FnArg::Typed(ty) => {
-            refactor_path_in_type(src, dest, &mut ty.ty)
-        }
+        FnArg::Typed(ty) => refactor_path_in_type(src, dest, &mut ty.ty),
     }
 }
 pub fn refactor_path_in_type(src: &Ident, dest: &Ident, ty: &mut Type) {
@@ -112,7 +110,7 @@ pub fn refactor_path_in_type(src: &Ident, dest: &Ident, ty: &mut Type) {
                 refactor_path_in_type(src, dest, elem)
             }
         }
-        _ => {},
+        _ => {}
     }
 }
 
@@ -150,4 +148,3 @@ pub fn refactor_path_in_generic_argument(src: &Ident, dest: &Ident, arg: &mut Ge
         GenericArgument::Const(_) => {}
     }
 }
-

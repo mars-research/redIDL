@@ -1,17 +1,17 @@
 mod blob_domain_create;
 mod linked_domain_create;
 
-use std::collections::HashMap;
 use crate::{has_attribute, remove_attribute};
 use log::info;
 use quote::format_ident;
-use syn::{Expr, FnArg, Ident, ImplItemMethod, Item, ItemFn, ItemTrait, Lit, Path, TraitItem, TraitItemMethod, parse_quote};
-
-
+use std::collections::HashMap;
+use syn::{
+    parse_quote, Expr, FnArg, Ident, ImplItemMethod, Item, ItemFn, ItemTrait, Lit, Path, TraitItem,
+    TraitItemMethod,
+};
 
 pub const LINKED_DOMAIN_CREATE_ATTR: &str = "domain_create";
 pub const BLOB_DOMAIN_CREATE_ATTR: &str = "domain_create_blob";
-
 
 /// Generation of domain create.
 /// It also keep track of all the domain create it generates.
@@ -27,7 +27,11 @@ impl DomainCreateBuilder {
     }
 
     /// Generates the domain create for `input` if it has the `DOMAIN_CREATE_ATTR` attribute.
-    pub fn generate_domain_create(&mut self, input: &mut ItemTrait, module_path: &[Ident]) -> Option<Vec<Item>> {
+    pub fn generate_domain_create(
+        &mut self,
+        input: &mut ItemTrait,
+        module_path: &[Ident],
+    ) -> Option<Vec<Item>> {
         // Create an attribute map.
         let attrs: HashMap<String, Option<Lit>> = crate::utils::create_attribue_map(&input.attrs);
 
@@ -42,32 +46,39 @@ impl DomainCreateBuilder {
         } else {
             return None;
         }
-    
+
         info!("Generating domain create for trait {:?}.", input.ident);
 
         // Compute the path to the trait.
-        let trait_path: String = module_path.iter().map(|ident| {
-            ident.to_string()
-        }).collect::<Vec<String>>().join("::");
+        let trait_path: String = module_path
+            .iter()
+            .map(|ident| ident.to_string())
+            .collect::<Vec<String>>()
+            .join("::");
         let trait_path = format!("{}::{}", trait_path, input.ident);
         let trait_path: syn::Path = syn::parse_str(&trait_path).unwrap();
 
         // Put the trait path into the list of domain creates.
-        self.domain_creates.push((trait_path.clone(), input.clone()));
+        self.domain_creates
+            .push((trait_path.clone(), input.clone()));
 
         // Create a copy of the input, refactor the path from `crate` to `interface, and we will be
         // working with the refactored one from now on.
         // The reason is that domain create will be generated into the kernel, which has a different
         // dependency path to the interface
         let mut input_copy = input.clone();
-        crate::path_refactoring::refactor_path_in_trait(&format_ident!("crate"), &format_ident!("interface"), &mut input_copy);
-    
+        crate::path_refactoring::refactor_path_in_trait(
+            &format_ident!("crate"),
+            &format_ident!("interface"),
+            &mut input_copy,
+        );
+
         // Add a comment so we know it's generated.
         input.attrs.push(
             parse_quote! {#[doc = "redIDL Auto Generated: domain_create trait. Generations are below"]},
         );
         let input = input_copy;
-    
+
         // Extract the domain path.
         let domain_path = crate::expect!(
             attrs.get("path"),
@@ -79,7 +90,7 @@ impl DomainCreateBuilder {
             Lit::Str(domain_path) => domain_path.value(),
             _ => panic!("Expecting a string."),
         };
-    
+
         // Generate code. Proxy is generated inplace and domain create is returned.
         let (generated_impl_items, generated_fns): (Vec<ImplItemMethod>, Vec<ItemFn>) = input
             .items
@@ -87,15 +98,21 @@ impl DomainCreateBuilder {
             .map(|item| match item {
                 TraitItem::Method(method) => {
                     if is_blob_domain_create {
-                        self::blob_domain_create::generate_domain_create_for_trait_method(&domain_path, method)
+                        self::blob_domain_create::generate_domain_create_for_trait_method(
+                            &domain_path,
+                            method,
+                        )
                     } else {
-                        self::linked_domain_create::generate_domain_create_for_trait_method(&domain_path, method)
+                        self::linked_domain_create::generate_domain_create_for_trait_method(
+                            &domain_path,
+                            method,
+                        )
                     }
                 }
                 _ => unimplemented!("Non-method member found in trait {:#?}", input),
             })
             .unzip();
-    
+
         // Generate the impl block.
         let mut generated: Vec<Item> = Vec::new();
         generated.push(Item::Impl(parse_quote! {
@@ -103,18 +120,17 @@ impl DomainCreateBuilder {
                 #(#generated_impl_items)*
             }
         }));
-    
+
         // Append the fn blocks
         generated.extend(generated_fns.into_iter().map(Item::Fn));
-    
+
         // Return the generated code.
         Some(generated)
     }
 
     pub fn generate_create_init(&self) -> Item {
-        let domain_create_paths: Vec<_> = self.domain_creates.iter().map(|(path, _)| {
-            path
-        }).collect();
+        let domain_create_paths: Vec<_> =
+            self.domain_creates.iter().map(|(path, _)| path).collect();
 
         let arcs: Vec<Expr> = self.domain_creates.iter().map(|_| {
             parse_quote! {
@@ -131,7 +147,7 @@ impl DomainCreateBuilder {
                     fn _binary_domains_build_redleaf_init_start();
                     fn _binary_domains_build_redleaf_init_end();
                 }
-            
+
                 let binary_range = (
                     _binary_domains_build_redleaf_init_start as *const u8,
                     _binary_domains_build_redleaf_init_end as *const u8,
@@ -144,11 +160,11 @@ impl DomainCreateBuilder {
 
                     #(::alloc::sync::Arc<dyn #domain_create_paths>,)*
                 );
-            
+
                 let (dom, entry) = unsafe { crate::domain::load_domain(name, binary_range) };
-            
+
                 let user_ep: UserInit = unsafe { ::core::mem::transmute::<*const (), UserInit>(entry) };
-            
+
                 // update current domain id
                 let thread = crate::thread::get_current_ref();
                 let old_id = {
@@ -157,7 +173,7 @@ impl DomainCreateBuilder {
                     thread.current_domain_id = dom.lock().id;
                     old_id
                 };
-            
+
                 // Enable interrupts on exit to user so it can be preempted
                 crate::interrupt::enable_irq();
                 user_ep(
@@ -167,12 +183,12 @@ impl DomainCreateBuilder {
                     #(#arcs),*
                 );
                 crate::interrupt::disable_irq();
-            
+
                 // change domain id back
                 {
                     thread.lock().current_domain_id = old_id;
                 }
-                
+
                 #[cfg(feature = "domain_create_log")]
                 println!("domain/{}: returned from entry point", name);
                 ::alloc::boxed::Box::new(crate::syscalls::PDomain::new(::alloc::sync::Arc::clone(&dom)))
@@ -184,4 +200,3 @@ impl DomainCreateBuilder {
         self.domain_creates
     }
 }
-

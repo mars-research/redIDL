@@ -1,9 +1,9 @@
 #![feature(box_syntax, box_patterns)]
 
 mod domain_create;
+mod path_refactoring;
 mod proxy;
 mod type_resolution;
-mod path_refactoring;
 #[macro_use]
 mod utils;
 
@@ -17,10 +17,10 @@ use std::io::Read;
 use std::process::Command;
 
 use clap::{App, Arg, ArgMatches};
+use domain_create::DomainCreateBuilder;
 use log::{info, warn};
 use quote::{format_ident, quote};
 use syn::{parse_quote, Item, ItemMod, Meta, NestedMeta, Type};
-use domain_create::DomainCreateBuilder;
 
 fn main() {
     // Initialze logging
@@ -105,24 +105,27 @@ fn generate(ast: &mut syn::File) -> Vec<syn::Item> {
     // Generate proxy and domain creations.
     let mut module_path = vec![format_ident!("interface")];
     let mut domain_create_builder = DomainCreateBuilder::new();
-    let mut generated_domain_create_items = generate_recurse(&mut ast.items, &mut domain_create_builder, &mut module_path);
+    let mut generated_domain_create_items =
+        generate_recurse(&mut ast.items, &mut domain_create_builder, &mut module_path);
 
     // Generate create_init and add it to generated domain creates.
     generated_domain_create_items.push(domain_create_builder.generate_create_init());
 
     // Finds the Generates the proxy struct inplace
-    let proxy_mod = ast.items.iter_mut().find_map(|item| {
-        match item {
+    let proxy_mod = ast
+        .items
+        .iter_mut()
+        .find_map(|item| match item {
             Item::Mod(md) => {
                 if md.ident == "proxy" {
                     Some(md)
                 } else {
                     None
                 }
-            },
+            }
             _ => None,
-        }
-    }).unwrap();
+        })
+        .unwrap();
     let (_, items) = proxy_mod.content.as_mut().unwrap();
     items.extend(proxy::generate_proxy(domain_create_builder.take()));
 
@@ -139,14 +142,18 @@ fn generate_recurse(
 ) -> Vec<syn::Item> {
     let mut generated_items = Vec::<syn::Item>::new();
     let mut generated_domain_create_items = Vec::<syn::Item>::new();
-    
+
     for item in items.iter_mut() {
         match item {
             Item::Mod(md) => {
                 if let Some((_, items)) = &mut md.content {
                     // Recursive into the submodule.
                     module_path.push(md.ident.clone());
-                    generated_domain_create_items.extend(generate_recurse(items, domain_create_builder, module_path));
+                    generated_domain_create_items.extend(generate_recurse(
+                        items,
+                        domain_create_builder,
+                        module_path,
+                    ));
                     module_path.pop();
                 }
             }
@@ -158,7 +165,7 @@ fn generate_recurse(
 
                 // Attempt to generate domain creation
                 if let Some(generated) =
-                domain_create_builder.generate_domain_create(tr, module_path)
+                    domain_create_builder.generate_domain_create(tr, module_path)
                 {
                     generated_domain_create_items.extend(generated);
                 }
@@ -218,7 +225,10 @@ fn remove_prelude_and_placeholder(ast: &mut syn::File) {
         // ```
         if let Item::ExternCrate(item) = item {
             let ident = item.ident.to_string();
-            if ident == "compiler_builtins" || ident == "core" || ident == "interface_attribute_placeholder" {
+            if ident == "compiler_builtins"
+                || ident == "core"
+                || ident == "interface_attribute_placeholder"
+            {
                 return false;
             }
         }
