@@ -1,7 +1,7 @@
 use lazy_static::lazy_static;
 use log::{info, trace};
 
-use std::{borrow::Borrow, collections::HashMap};
+use std::collections::HashMap;
 use syn::{
     Expr, ExprLit, File, FnArg, GenericArgument, Ident, Item, ItemTrait, Lit, Path, PathArguments,
     PathSegment, ReturnType, TraitItem, TraitItemMethod, Type,
