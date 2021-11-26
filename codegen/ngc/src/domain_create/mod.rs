@@ -1,16 +1,20 @@
 mod blob_domain_create;
 mod linked_domain_create;
 
-use crate::{has_attribute, remove_attribute};
+use crate::{
+    domain_create::linked_domain_create::DomainCreateComponent, has_attribute, remove_attribute,
+};
 use log::info;
 use quote::format_ident;
 use std::collections::HashMap;
 use syn::{
-    parse_quote, Expr, Ident, ImplItemMethod, Item, ItemFn, ItemTrait, Lit, Path, TraitItem,
+    parse_quote, Expr, Ident, ImplItemMethod, Item, ItemFn, ItemTrait, Lit, Meta, NestedMeta, Path,
+    TraitItem,
 };
 
 pub const LINKED_DOMAIN_CREATE_ATTR: &str = "domain_create";
 pub const BLOB_DOMAIN_CREATE_ATTR: &str = "domain_create_blob";
+pub const DOMAIN_CREATE_COMPONENTS_ATTR: &str = "domain_create_components";
 
 /// Generation of domain create.
 /// It also keep track of all the domain create it generates.
@@ -45,6 +49,50 @@ impl DomainCreateBuilder {
         } else {
             return None;
         }
+
+        // Default domain create components, can be overridden with #[domain_create_components(Domain, MMap, Heap)]
+        let mut domain_components =
+            vec![DomainCreateComponent::Domain, DomainCreateComponent::Heap];
+
+        let metas = input.attrs.iter().map(|attr| attr.parse_meta().unwrap());
+        for meta in metas {
+            if meta.path().is_ident(DOMAIN_CREATE_COMPONENTS_ATTR) {
+                let mut new_domain_components = vec![];
+                // Override domain components
+                match meta {
+                    Meta::List(m) => {
+                        for component in m.nested.iter() {
+                            if let NestedMeta::Meta(comp) = component {
+                                if let Some(ident) = comp.path().get_ident() {
+                                    match ident.to_string().as_str() {
+                                        "Domain" => new_domain_components
+                                            .push(DomainCreateComponent::Domain),
+                                        "MMap" => {
+                                            new_domain_components.push(DomainCreateComponent::MMap)
+                                        }
+                                        "Heap" => {
+                                            new_domain_components.push(DomainCreateComponent::Heap)
+                                        }
+                                        other => {
+                                            panic!(
+                                                "Unsupported domain_create_component '{:#?}'",
+                                                &other
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+
+                // info!("Domain Create Components: {:#?}", new_domain_components);
+                domain_components = new_domain_components;
+            }
+        }
+
+        remove_attribute!(input, DOMAIN_CREATE_COMPONENTS_ATTR);
 
         info!("Generating domain create for trait {:?}.", input.ident);
 
@@ -104,6 +152,7 @@ impl DomainCreateBuilder {
                     } else {
                         self::linked_domain_create::generate_domain_create_for_trait_method(
                             &domain_path,
+                            &domain_components,
                             method,
                         )
                     }
