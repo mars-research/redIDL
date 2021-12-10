@@ -2,42 +2,7 @@ use quote::format_ident;
 
 use syn::{parse_quote, FnArg, TraitItemMethod};
 
-#[derive(Debug, Clone, Copy)]
-pub enum DomainCreateComponent {
-    Domain,
-    MMap,
-    Heap,
-}
-
-impl DomainCreateComponent {
-    fn creation_statement(&self) -> syn::Stmt {
-        match self {
-            &DomainCreateComponent::Domain => parse_quote! {
-                let pdom_ = ::alloc::boxed::Box::new(crate::syscalls::PDomain::new(::alloc::sync::Arc::clone(&dom_)));
-            },
-            &DomainCreateComponent::MMap => parse_quote! {
-                let pmmap_ = ::alloc::boxed::Box::new(crate::syscalls::Mmap::new());
-            },
-            &DomainCreateComponent::Heap => parse_quote! {
-                let pheap_ = ::alloc::boxed::Box::new(crate::heap::PHeap::new());
-            },
-        }
-    }
-
-    fn as_fn_argument(&self) -> syn::FnArg {
-        match self {
-            &DomainCreateComponent::Domain => parse_quote! {
-                pdom_: ::alloc::boxed::Box<dyn syscalls::Syscall>
-            },
-            &DomainCreateComponent::MMap => parse_quote! {
-                pmmap_: ::alloc::boxed::Box<dyn syscalls::Mmap>
-            },
-            &DomainCreateComponent::Heap => parse_quote! {
-                pheap_: ::alloc::boxed::Box<dyn syscalls::Heap>
-            },
-        }
-    }
-}
+use super::DomainCreateComponent;
 
 /// This generates a public fn and a impl method.
 /// This public fn is exposed to the kernel while the impl method is exposed to the users.

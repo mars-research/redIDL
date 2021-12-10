@@ -7,17 +7,22 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Cargo launch",
+            "name": "Cargo Launch",
             "program": "${workspaceFolder}/target/debug/ngc",
             "cwd": "${workspaceFolder}",
             "args": [
-                "../codegen-old/cleanser/test.rs",
-                "/dev/null"
+                "../../../../interface/generated/merged.rs",
+                "target/out.rs",
+                "--domain_create_output=target/create.rs",
+                "--domain_entrypoints_output=target/domain/generated/"
             ],
             "env": {
                 "RUST_LOG": "TRACE",
             },
-            "preLaunchTask": "rust: cargo build"
+            "preLaunchTask": "rust: cargo build",
+            "sourceLanguages": [
+                "rust"
+            ]
         },
     ]
 }

@@ -1,11 +1,9 @@
 mod blob_domain_create;
 mod linked_domain_create;
 
-use crate::{
-    domain_create::linked_domain_create::DomainCreateComponent, has_attribute, remove_attribute,
-};
-use log::info;
-use quote::format_ident;
+use crate::{domain_entrypoint::DomainEntrypointFactory, has_attribute, remove_attribute};
+use log::{debug, error, info, warn};
+use quote::{format_ident, ToTokens};
 use std::collections::HashMap;
 use syn::{
     parse_quote, Expr, Ident, ImplItemMethod, Item, ItemFn, ItemTrait, Lit, Meta, NestedMeta, Path,
@@ -16,15 +14,62 @@ pub const LINKED_DOMAIN_CREATE_ATTR: &str = "domain_create";
 pub const BLOB_DOMAIN_CREATE_ATTR: &str = "domain_create_blob";
 pub const DOMAIN_CREATE_COMPONENTS_ATTR: &str = "domain_create_components";
 
+#[derive(Debug, Clone, Copy)]
+pub enum DomainCreateComponent {
+    Domain,
+    MMap,
+    Heap,
+}
+
+impl DomainCreateComponent {
+    fn creation_statement(&self) -> syn::Stmt {
+        match self {
+            &DomainCreateComponent::Domain => parse_quote! {
+                let pdom_ = ::alloc::boxed::Box::new(crate::syscalls::PDomain::new(::alloc::sync::Arc::clone(&dom_)));
+            },
+            &DomainCreateComponent::MMap => parse_quote! {
+                let pmmap_ = ::alloc::boxed::Box::new(crate::syscalls::Mmap::new());
+            },
+            &DomainCreateComponent::Heap => parse_quote! {
+                let pheap_ = ::alloc::boxed::Box::new(crate::heap::PHeap::new());
+            },
+        }
+    }
+
+    fn as_fn_argument(&self) -> syn::FnArg {
+        match self {
+            &DomainCreateComponent::Domain => parse_quote! {
+                pdom_: ::alloc::boxed::Box<dyn syscalls::Syscall>
+            },
+            &DomainCreateComponent::MMap => parse_quote! {
+                pmmap_: ::alloc::boxed::Box<dyn syscalls::Mmap>
+            },
+            &DomainCreateComponent::Heap => parse_quote! {
+                pheap_: ::alloc::boxed::Box<dyn syscalls::Heap>
+            },
+        }
+    }
+}
+
 /// Generation of domain create.
 /// It also keep track of all the domain create it generates.
 pub struct DomainCreateBuilder {
+    /// The path to the root of the domains folder for RedLeaf, used for entrypoint generation
+    domain_entrypoint_factory: Option<DomainEntrypointFactory>,
     domain_creates: Vec<(Path, ItemTrait)>,
 }
 
 impl DomainCreateBuilder {
     pub fn new() -> Self {
         Self {
+            domain_entrypoint_factory: None,
+            domain_creates: vec![],
+        }
+    }
+
+    pub fn new_with_domains_folder(domains_folder: DomainEntrypointFactory) -> Self {
+        Self {
+            domain_entrypoint_factory: Some(domains_folder),
             domain_creates: vec![],
         }
     }
@@ -105,6 +150,11 @@ impl DomainCreateBuilder {
         let trait_path = format!("{}::{}", trait_path, input.ident);
         let trait_path: syn::Path = syn::parse_str(&trait_path).unwrap();
 
+        // TODO: Remove
+        // debug!("INPUT: {:}", &input.to_token_stream());
+        // debug!("MODULE_PATH: {:#?}", &module_path);
+        // debug!("TRAIT_PATH: {:#?}", trait_path);
+
         // Put the trait path into the list of domain creates.
         self.domain_creates
             .push((trait_path.clone(), input.clone()));
@@ -125,6 +175,10 @@ impl DomainCreateBuilder {
             parse_quote! {#[doc = "redIDL Auto Generated: domain_create trait. Generations are below"]},
         );
         let input = input_copy;
+
+        // Generate the entrypoint if we have a domain path and a relative path
+        let domain_relative_path =
+            self.get_relative_domain_path(&input, attrs.get("relative_path"));
 
         // Extract the domain path.
         let domain_path = crate::expect!(
@@ -150,6 +204,20 @@ impl DomainCreateBuilder {
                             method,
                         )
                     } else {
+                        // If we have a relative path then we'll generate an entrypoint
+                        if self.domain_entrypoint_factory.is_some() {
+                            if let Some(domain_relative_path) = domain_relative_path.as_ref() {
+                                self.domain_entrypoint_factory
+                                    .as_ref()
+                                    .unwrap()
+                                    .generate_domain_entrypoint_crates(
+                                        domain_relative_path,
+                                        &domain_components,
+                                        method,
+                                    );
+                            }
+                        }
+
                         self::linked_domain_create::generate_domain_create_for_trait_method(
                             &domain_path,
                             &domain_components,
@@ -176,9 +244,12 @@ impl DomainCreateBuilder {
         Some(generated)
     }
 
+    pub fn get_domain_paths(&self) -> Vec<&Path> {
+        self.domain_creates.iter().map(|(path, _)| path).collect()
+    }
+
     pub fn generate_create_init(&self) -> Item {
-        let domain_create_paths: Vec<_> =
-            self.domain_creates.iter().map(|(path, _)| path).collect();
+        let domain_create_paths = self.get_domain_paths();
 
         let arcs: Vec<Expr> = self.domain_creates.iter().map(|_| {
             parse_quote! {
@@ -246,5 +317,58 @@ impl DomainCreateBuilder {
 
     pub fn take(self) -> Vec<(Path, ItemTrait)> {
         self.domain_creates
+    }
+
+    fn get_relative_domain_path(
+        &self,
+        input: &ItemTrait,
+        relative_path: Option<&Option<Lit>>,
+    ) -> Option<std::path::PathBuf> {
+        if self.domain_entrypoint_factory.is_none() {
+            return None;
+        }
+
+        if let Some(Some(path)) = relative_path {
+            match path {
+                Lit::Str(s) => {
+                    // Check it's a valid path and crate
+                    let domain_path = self
+                        .domain_entrypoint_factory
+                        .as_ref()
+                        .unwrap()
+                        .as_relative_to_domains_folder(&std::path::PathBuf::from(s.value()));
+                    if Self::is_path_crate(&domain_path) {
+                        return Some(domain_path);
+                    } else {
+                        return None;
+                    }
+                }
+                _ => {
+                    warn!("'relative_path' for trait {} is not a string!", input.ident);
+                    return None;
+                }
+            }
+        } else {
+            warn!("The trait {} has no 'relative_path' specified, an entrypoint will not be generated", input.ident);
+            return None;
+        }
+    }
+
+    /// Checks that the path is a folder and checks that the folder contains Cargo.toml
+    fn is_path_crate(path: &std::path::Path) -> bool {
+        if !path.is_dir() {
+            error!("Crate Path {:#?} is not a directory!", path.canonicalize());
+            return false;
+        }
+
+        if !path.join("Cargo.toml").exists() {
+            error!(
+                "Crate Path {:#?} does not contain Cargo.toml!",
+                path.canonicalize()
+            );
+            return false;
+        }
+
+        return true;
     }
 }
