@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use quote::ToTokens;
 use syn::TraitItemMethod;
 
@@ -63,28 +63,81 @@ impl DomainEntrypointFactory {
         self.domains_folder.join(path)
     }
 
+    pub fn generate_entrypoint_cargo(
+        &self,
+        domain_relative_path: &Path,
+        domain_name: &str,
+    ) -> String {
+        format!(
+            r#"
+                [package]
+                name = "{:}"
+                version = "0.1.0"
+                authors = ["Redleaf team <aburtsev@uci.edu>"]
+                edition = "2018"
+    
+                # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+    
+                [[bin]]
+                name = "{:}"
+                path = "src/main.rs"
+    
+                [dependencies]
+                interface = {{ path = "../../../interface/generated" }}
+                libsyscalls = {{ path = "../../../lib/core/libsyscalls" }}
+                syscalls = {{ path = "../../../lib/core/interfaces/syscalls" }}
+                console = {{ path = "../../../lib/core/console" }}
+    
+                {:} = {{ path = "../../{:}" }}       
+                "#,
+            domain_name.to_owned() + "_entry_point",
+            domain_name,
+            domain_name,
+            domain_relative_path
+                .strip_prefix("../../../../domains/")
+                .unwrap()
+                .display()
+        )
+    }
+
     pub fn generate_domain_entrypoint_crates(
         &self,
         domain_relative_path: &Path,
         domain_components: &Vec<DomainCreateComponent>,
         method: &TraitItemMethod,
     ) {
-        debug!(
-            "domain_relative_path: {:#?}, domain_components: {:#?}",
-            domain_relative_path, domain_components,
-        );
+        // debug!(
+        //     "domain_relative_path: {:#?}, domain_components: {:#?}",
+        //     domain_relative_path, domain_components,
+        // );
 
-        debug!(
-            "arguments: {:#?}",
-            method
-                .sig
-                .inputs
-                .iter()
-                .filter_map(|arg| match arg {
-                    syn::FnArg::Typed(a) => Some(a.to_token_stream().to_string()),
-                    _ => None,
-                })
-                .collect::<Vec<_>>()
-        );
+        // debug!("method name: {:#?}", method.sig.ident.to_string());
+
+        // debug!(
+        //     "arguments: {:#?}",
+        //     method
+        //         .sig
+        //         .inputs
+        //         .iter()
+        //         .filter_map(|arg| match arg {
+        //             syn::FnArg::Typed(a) => Some(a.to_token_stream().to_string()),
+        //             _ => None,
+        //         })
+        //         .collect::<Vec<_>>()
+        // );
+
+        let method_name = method.sig.ident.to_string();
+        if !method_name.starts_with("create_domain_") {
+            warn!(
+                "Method name {:} does not start with 'create_domain_', skipping entrypoint generation",
+                method_name
+            );
+            return;
+        }
+
+        let domain_name = method_name.trim_start_matches("create_domain_");
+
+        let cargo_toml = self.generate_entrypoint_cargo(domain_relative_path, domain_name);
+        debug!("CARGO TOML: {:}", cargo_toml);
     }
 }
