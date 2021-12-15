@@ -24,7 +24,7 @@ impl DomainEntrypointFactory {
 
         DomainEntrypointFactory {
             output_folder_created: true,
-            output_folder_path,
+            output_folder_path: output_folder_path.to_path_buf(),
             domains_folder,
         }
     }
@@ -103,6 +103,9 @@ impl DomainEntrypointFactory {
                 .unwrap()
                 .display()
         )
+        .split_terminator("\n")
+        .filter_map(|line| if line.is_empty() {None} else { Some(line.trim().to_owned() + "\n" )})
+        .collect()
     }
 
     pub fn generate_entrypoint_main_rs(
@@ -211,13 +214,15 @@ impl DomainEntrypointFactory {
     }
 
     pub fn write_entrypoint_crate(&self, crate_name: &str, cargo_toml: String, main_rs: String) {
-        let output_path = self.output_folder_path.join(crate_name + "_entry_point");
+        let output_path = self
+            .output_folder_path
+            .join(crate_name.to_owned() + "_entry_point");
 
-        std::fs::create_dir(output_path);
-        std::fs::write(output_path.join("Cargo.toml"), cargo_toml);
+        std::fs::create_dir(&output_path);
+        std::fs::write(&output_path.join("Cargo.toml"), cargo_toml);
 
-        std::fs::create_dir(output_path.join("src"));
-        std::fs::write(output_path.join("src/main.rs"), main_rs);
+        std::fs::create_dir(&output_path.join("src"));
+        std::fs::write(&output_path.join("src/main.rs"), main_rs);
     }
 
     pub fn generate_domain_entrypoint_crates(
