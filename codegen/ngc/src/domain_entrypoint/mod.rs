@@ -99,7 +99,7 @@ impl DomainEntrypointFactory {
             domain_name,
             domain_name,
             domain_relative_path
-                .strip_prefix("../../../../domains/")
+                .strip_prefix(&self.domains_folder)
                 .unwrap()
                 .display()
         )
@@ -124,20 +124,20 @@ impl DomainEntrypointFactory {
                     parse_quote! {heap: Box<dyn syscalls::Heap + Send + Sync>}
                 }
                 &DomainCreateComponent::MMap => {
-                    parse_quote! {mmap: Box<dyn syscalls::Mmap + Send + Sync}
+                    parse_quote! {mmap: Box<dyn syscalls::Mmap + Send + Sync>}
                 }
             })
             .collect::<Vec<syn::FnArg>>();
 
         let domain_components_init_statements = domain_components.iter().map(|comp| match comp {
             &DomainCreateComponent::Domain => {
-                parse_quote! {  libsyscalls::syscalls::init(s); }
+                parse_quote! {  libsyscalls::syscalls::init(s);  }
             }
             &DomainCreateComponent::Heap => {
-                parse_quote! {  interface::rref::init(heap, libsyscalls::syscalls::sys_get_current_domain_id()); }
+                parse_quote! {  interface::rref::init(heap, libsyscalls::syscalls::sys_get_current_domain_id());  }
             }
             &DomainCreateComponent::MMap => {
-                parse_quote! {  libsyscalls::syscalls::init_mmap(m);}
+                parse_quote! {  libsyscalls::syscalls::init_mmap(mmap);  }
             }
         }).collect::<Vec<syn::Stmt>>();
 
@@ -178,8 +178,15 @@ impl DomainEntrypointFactory {
                     }
 
                     let returned_types = iter.skip(1);
-                    let return_type: syn::Type = parse_quote! {
-                        Box<( #(#returned_types),* )>
+
+                    let return_type: syn::Type = if returned_types.len() > 1 {
+                        parse_quote! {
+                            ( #(#returned_types),* )
+                        }
+                    } else {
+                        parse_quote! {
+                            #(#returned_types)*
+                        }
                     };
 
                     return_type
@@ -194,9 +201,7 @@ impl DomainEntrypointFactory {
             #![no_main]
 
             extern crate alloc;
-
             use alloc::boxed::Box;
-            use console::println;
 
             use #domain_ident;
 
@@ -249,6 +254,5 @@ impl DomainEntrypointFactory {
         debug!("main.rs: {:}", main_rs);
 
         self.write_entrypoint_crate(domain_name, cargo_toml, main_rs);
-        panic!("END");
     }
 }

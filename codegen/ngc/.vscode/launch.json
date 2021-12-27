@@ -14,12 +14,13 @@
                 "../../../../interface/generated/merged.rs",
                 "target/out.rs",
                 "--domain_create_output=target/create.rs",
-                "--domain_entrypoints_output=target/domain/generated/"
+                "--domains=../../../../domains/"
             ],
             "env": {
-                "RUST_LOG": "TRACE",
+                // "RUST_LOG": "TRACE",
+                "RUST_LOG": "DEBUG"
             },
-            "preLaunchTask": "rust: cargo build",
+            // "preLaunchTask": "rust: cargo build",
             "sourceLanguages": [
                 "rust"
             ]
