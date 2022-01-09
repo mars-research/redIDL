@@ -64,7 +64,7 @@ macro_rules! expect {
     ($result:expr, $fmt:expr, $($args:tt)*) => {
         match $result {
             Some(result) => result,
-            None => panic!(std::format!($fmt, $($args)*)),
+            None => panic!($fmt, $($args)*),
         }
     };
 }
@@ -107,16 +107,15 @@ fn create_attribue_map_from_meta(meta: &syn::Meta) -> HashMap<String, Option<syn
 }
 
 // Remove `self` from the argument list.
-pub fn get_selfless_args<'a, T: Iterator<Item = &'a FnArg>>(args: T) -> Vec<&'a FnArg>{
-    args
-        .filter(|arg| match arg {
-            FnArg::Receiver(_) => false,
-            FnArg::Typed(_) => true,
-        })
-        .collect()
+pub fn get_selfless_args<'a, T: Iterator<Item = &'a FnArg>>(args: T) -> Vec<&'a FnArg> {
+    args.filter(|arg| match arg {
+        FnArg::Receiver(_) => false,
+        FnArg::Typed(_) => true,
+    })
+    .collect()
 }
 
-// Get `T` from `Boxed<T>`. Panic if it's not a box.  
+// Get `T` from `Boxed<T>`. Panic if it's not a box.
 pub fn get_type_inside_of_box(ty: &syn::Type) -> &syn::Type {
     match ty {
         syn::Type::Path(path) => {
@@ -130,7 +129,7 @@ pub fn get_type_inside_of_box(ty: &syn::Type) -> &syn::Type {
                         syn::GenericArgument::Type(ty) => ty,
                         _ => panic!("Expecting a type in the box but get: {:#?}", arg),
                     }
-                },
+                }
                 _ => panic!("Expecting Boxed<T> but get: {:#?}", path),
             }
         }

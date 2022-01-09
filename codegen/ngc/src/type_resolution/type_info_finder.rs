@@ -3,11 +3,7 @@ use crate::expect;
 use crate::type_resolution::symbol_tree::PATH_MODIFIERS;
 use log::{debug, info, trace};
 
-use std::borrow::{Borrow, BorrowMut};
-use syn::{
-    spanned::Spanned, File, FnArg, Ident, Item, ItemTrait, ItemUse, Path, PathSegment, ReturnType,
-    TraitItem, TraitItemMethod, Type, UseTree, Visibility,
-};
+use syn::{File, Ident, Item, UseTree, Visibility};
 
 const RELATIVE_PATH_TARGET: &str = "relative_path_resolution";
 
@@ -197,10 +193,13 @@ impl TypeInfoFinder {
                                 Definition::Literal(lit.lit.clone()),
                             ));
                             // Insert the node into the current module.
-                            self.current_module
-                                .borrow_mut()
-                                .insert(item.ident.clone(), node)
-                                .expect_none("type node shouldn't apprear more than once");
+                            assert!(
+                                self.current_module
+                                    .borrow_mut()
+                                    .insert(item.ident.clone(), node)
+                                    .is_none(),
+                                "type node shouldn't appear more than once"
+                            );
                         }
                         _ => self.add_definition_symbol(&item.ident, &item.vis, &og_item),
                     }
@@ -327,10 +326,13 @@ impl TypeInfoFinder {
         };
 
         // Add the symbol to the module.
-        self.current_module
-            .borrow_mut()
-            .insert(ident.clone(), node)
-            .expect_none("type node shouldn't apprear more than once");
+        assert!(
+            self.current_module
+                .borrow_mut()
+                .insert(ident.clone(), node)
+                .is_none(),
+            "type node shouldn't apprear more than once"
+        );
     }
 
     /// Add a symbol that's defined in the current scope. The symbol is terminal.
@@ -352,6 +354,13 @@ impl TypeInfoFinder {
             node.clone(),
             Definition::Type(definition.clone()),
         ));
-        self.current_module.borrow_mut().insert(ident.clone(), node.clone()).expect_none(&format!("Trying to insert {:?} but already exist. Type node shouldn't apprear more than once", node));
+        assert!(
+            self.current_module
+                .borrow_mut()
+                .insert(ident.clone(), node.clone())
+                .is_none(),
+            "Trying to insert {:?} but already exist. Type node shouldn't appear more than once",
+            ident.clone()
+        );
     }
 }

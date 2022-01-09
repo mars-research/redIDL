@@ -1,15 +1,19 @@
-use std::collections::HashMap;
-
 use crate::{has_attribute, remove_attribute};
 
 use quote::{format_ident, quote};
 use syn::punctuated::Punctuated;
-use syn::{Field, FnArg, Ident, ImplItem, ImplItemMethod, Item, ItemFn, ItemTrait, Path, Token, TraitItem, TraitItemMethod, parse_quote};
+use syn::{
+    parse_quote, FnArg, Ident, ImplItem, ImplItemMethod, Item, ItemFn, ItemTrait, Path, Token,
+    TraitItem, TraitItemMethod,
+};
 
 const INTERFACE_ATTR: &str = "interface";
 
 /// Generate the proxy for a IPC interface trait.
-pub fn generate_interface_proxy(input: &mut ItemTrait, _module_path: &[Ident]) -> Option<Vec<Item>> {
+pub fn generate_interface_proxy(
+    input: &mut ItemTrait,
+    _module_path: &[Ident],
+) -> Option<Vec<Item>> {
     // Noop if the input is not a proxy interface.
     if !has_attribute!(input, INTERFACE_ATTR) {
         return None;
@@ -109,31 +113,38 @@ pub fn generate_proxy(domain_creates: Vec<(Path, ItemTrait)>) -> Vec<Item> {
     let proxy_struct_ident = format_ident!("ProxyObject");
 
     // Create a mapping between the names and the interfaces.
-    let domain_creates: Vec<(Ident, Path, ItemTrait)> = domain_creates.into_iter()
-    .filter(|(path, _)| {
-        // Filter out "CreateProxy" since we don't proxy the proxy creation.
-        path.segments.last().unwrap().ident != "CreateProxy"
-    })
-    .map(|(mut path, definition)| {
-        // Make sure the path starts with `crate` since proxy will be generated inside of interface.
-        path.segments.first_mut().unwrap().ident = format_ident!("crate");
+    let domain_creates: Vec<(Ident, Path, ItemTrait)> = domain_creates
+        .into_iter()
+        .filter(|(path, _)| {
+            // Filter out "CreateProxy" since we don't proxy the proxy creation.
+            path.segments.last().unwrap().ident != "CreateProxy"
+        })
+        .map(|(mut path, definition)| {
+            // Make sure the path starts with `crate` since proxy will be generated inside of interface.
+            path.segments.first_mut().unwrap().ident = format_ident!("crate");
 
-        // The first ident is skipped because it's redundant.
-        let path_str = path.segments.iter().skip(1).map(|seg| {
-            seg.ident.to_string()
-        }).collect::<Vec<String>>().join("_");
-        let name = format_ident!("{}", path_str);
-        (name, path, definition)
-    }).collect();
+            // The first ident is skipped because it's redundant.
+            let path_str = path
+                .segments
+                .iter()
+                .skip(1)
+                .map(|seg| seg.ident.to_string())
+                .collect::<Vec<String>>()
+                .join("_");
+            let name = format_ident!("{}", path_str);
+            (name, path, definition)
+        })
+        .collect();
 
     // Generate each struct field.
-    let struct_fields: Vec<FnArg> = domain_creates.iter().map(
-        |(name, path, _)| {
+    let struct_fields: Vec<FnArg> = domain_creates
+        .iter()
+        .map(|(name, path, _)| {
             parse_quote! {
                 #name: ::alloc::sync::Arc<dyn #path>
             }
-        }
-    ).collect();
+        })
+        .collect();
 
     // Generate the struct.
     generated_items.push(Item::Struct(parse_quote! {
@@ -155,11 +166,7 @@ pub fn generate_proxy(domain_creates: Vec<(Path, ItemTrait)>) -> Vec<Item> {
     }));
 
     // Generate the main impl block.
-    let struct_fields_names_only: Vec<_> = domain_creates.iter().map(
-        |(name, _, _)| {
-            name
-        }
-    ).collect();
+    let struct_fields_names_only: Vec<_> = domain_creates.iter().map(|(name, _, _)| name).collect();
     generated_items.push(Item::Impl(parse_quote! {
         #[cfg(feature = "proxy")]
         impl #proxy_struct_ident {
@@ -172,20 +179,23 @@ pub fn generate_proxy(domain_creates: Vec<(Path, ItemTrait)>) -> Vec<Item> {
     }));
 
     // Generate impl block for trait Proxy
-    let as_fns: Vec<ImplItemMethod> = domain_creates.iter().map(|(name, path, _)| {
-        let ident = format_ident!("as_{}", name);
-        parse_quote! {
-            fn #ident(&self) -> ::alloc::sync::Arc<dyn #path> {
-                ::alloc::sync::Arc::new(self.clone())
+    let as_fns: Vec<ImplItemMethod> = domain_creates
+        .iter()
+        .map(|(name, path, _)| {
+            let ident = format_ident!("as_{}", name);
+            parse_quote! {
+                fn #ident(&self) -> ::alloc::sync::Arc<dyn #path> {
+                    ::alloc::sync::Arc::new(self.clone())
+                }
             }
-        }
-    }).collect();
+        })
+        .collect();
     generated_items.push(Item::Impl(parse_quote! {
         #[cfg(feature = "proxy")]
         impl crate::proxy::Proxy for #proxy_struct_ident {
             // TODO: figure out how to do this without Arc::new every time
             #(#as_fns)*
-        }            
+        }
     }));
 
     // Generate impls for domain create traits.
@@ -275,11 +285,10 @@ pub fn generate_proxy(domain_creates: Vec<(Path, ItemTrait)>) -> Vec<Item> {
     generated_items
 }
 
-
 /// Generate trampolines for `methods`.
 fn generate_trampolines(
     trait_ident: &Ident,
-    proxy_ident: &Ident,
+    _proxy_ident: &Ident,
     methods: &[TraitItemMethod],
 ) -> proc_macro2::TokenStream {
     let trampolines = methods.iter()

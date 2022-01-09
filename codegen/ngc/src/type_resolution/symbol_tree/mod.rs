@@ -6,7 +6,6 @@ pub use module::*;
 pub use symbol_tree::*;
 pub use symbol_tree_node::*;
 
-use std::borrow::Borrow;
 use std::collections::HashSet;
 
 lazy_static::lazy_static! {

@@ -1,10 +1,10 @@
 use log::info;
 use syn::{parse_quote, Item, Type};
 
-pub mod type_resolver;
+pub mod rrefed_finder;
 pub mod symbol_tree;
 pub mod type_info_finder;
-pub mod rrefed_finder;
+pub mod type_resolver;
 mod utils;
 
 #[cfg(test)]

@@ -1,9 +1,10 @@
-#![feature(option_expect_none, box_syntax, box_patterns, option_unwrap_none)]
+#![feature(box_syntax, box_patterns)]
 
 mod domain_create;
+mod domain_entrypoint;
+mod path_refactoring;
 mod proxy;
 mod type_resolution;
-mod path_refactoring;
 #[macro_use]
 mod utils;
 
@@ -17,10 +18,12 @@ use std::io::Read;
 use std::process::Command;
 
 use clap::{App, Arg, ArgMatches};
-use log::{info, warn};
-use quote::{format_ident, quote};
-use syn::{parse_quote, Item, ItemMod, Meta, NestedMeta, Type};
 use domain_create::DomainCreateBuilder;
+use log::{error, info, warn};
+use quote::{format_ident, quote};
+use syn::{parse_quote, Item, Meta, NestedMeta};
+
+use crate::domain_entrypoint::DomainEntrypointFactory;
 
 fn main() {
     // Initialze logging
@@ -49,6 +52,15 @@ fn main() {
                 .help("Path to the domain create generation output.")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("domains")
+                .value_name("domains")
+                .long("domains")
+                .help(
+                    "Path to the *folder* where the domain crates are. Usually 'domains'. Generated entrypoints will be put in '[path]/generated'",
+                )
+                .takes_value(true),
+        )
         .get_matches();
 
     run(&matches).unwrap();
@@ -67,8 +79,24 @@ fn run(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // Clean the file
     remove_prelude_and_placeholder(&mut ast);
 
+    let domain_create_builder = if let Some(domains_folder) = args.value_of("domains") {
+        // Check the path is valid
+        let domains_folder = std::path::PathBuf::from(domains_folder);
+        if !domains_folder.exists() || !domains_folder.is_dir() {
+            panic!(
+                "Provided domains folder does not exist or is not a directory! {:#?}",
+                domains_folder.canonicalize()
+            );
+        }
+
+        let domain_entrypoint_factory = DomainEntrypointFactory::new(domains_folder);
+        DomainCreateBuilder::new_with_domains_folder(domain_entrypoint_factory)
+    } else {
+        DomainCreateBuilder::new()
+    };
+
     // Generate code.
-    let generated_domain_create = generate(&mut ast);
+    let generated_domain_create = generate(domain_create_builder, &mut ast);
 
     // Write generated proxy.
     write_ast_to_file(&ast, output_path);
@@ -79,11 +107,11 @@ fn run(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             #(#generated_domain_create)*
         };
 
-        info!("Writting interface output to {}", domain_create_out);
+        info!("Writing interface output to {}", domain_create_out);
         write_ast_to_file(&domain_create_ast, domain_create_out)
     }
 
-    info!("Writting interface output to {}", output_path);
+    info!("Writing interface output to {}", output_path);
     let output = quote!(#ast).to_string();
     std::fs::write(&output_path, output).unwrap();
 
@@ -98,33 +126,35 @@ fn run(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
 // Generate proxy and other stuff from `items` in place.
 // Save Returns domain create generation.
-fn generate(ast: &mut syn::File) -> Vec<syn::Item> {
+fn generate(mut builder: DomainCreateBuilder, ast: &mut syn::File) -> Vec<syn::Item> {
     // Generate type id
     crate::type_resolution::generate_typeid(ast);
 
     // Generate proxy and domain creations.
     let mut module_path = vec![format_ident!("interface")];
-    let mut domain_create_builder = DomainCreateBuilder::new();
-    let mut generated_domain_create_items = generate_recurse(&mut ast.items, &mut domain_create_builder, &mut module_path);
+    let mut generated_domain_create_items =
+        generate_recurse(&mut ast.items, &mut builder, &mut module_path);
 
     // Generate create_init and add it to generated domain creates.
-    generated_domain_create_items.push(domain_create_builder.generate_create_init());
+    generated_domain_create_items.push(builder.generate_create_init());
 
     // Finds the Generates the proxy struct inplace
-    let proxy_mod = ast.items.iter_mut().find_map(|item| {
-        match item {
+    let proxy_mod = ast
+        .items
+        .iter_mut()
+        .find_map(|item| match item {
             Item::Mod(md) => {
                 if md.ident == "proxy" {
                     Some(md)
                 } else {
                     None
                 }
-            },
+            }
             _ => None,
-        }
-    }).unwrap();
+        })
+        .unwrap();
     let (_, items) = proxy_mod.content.as_mut().unwrap();
-    items.extend(proxy::generate_proxy(domain_create_builder.take()));
+    items.extend(proxy::generate_proxy(builder.take()));
 
     // Return the generated domain creates.
     generated_domain_create_items
@@ -139,14 +169,18 @@ fn generate_recurse(
 ) -> Vec<syn::Item> {
     let mut generated_items = Vec::<syn::Item>::new();
     let mut generated_domain_create_items = Vec::<syn::Item>::new();
-    
+
     for item in items.iter_mut() {
         match item {
             Item::Mod(md) => {
                 if let Some((_, items)) = &mut md.content {
                     // Recursive into the submodule.
                     module_path.push(md.ident.clone());
-                    generated_domain_create_items.extend(generate_recurse(items, domain_create_builder, module_path));
+                    generated_domain_create_items.extend(generate_recurse(
+                        items,
+                        domain_create_builder,
+                        module_path,
+                    ));
                     module_path.pop();
                 }
             }
@@ -158,7 +192,7 @@ fn generate_recurse(
 
                 // Attempt to generate domain creation
                 if let Some(generated) =
-                domain_create_builder.generate_domain_create(tr, module_path)
+                    domain_create_builder.generate_domain_create(tr, module_path)
                 {
                     generated_domain_create_items.extend(generated);
                 }
@@ -218,7 +252,10 @@ fn remove_prelude_and_placeholder(ast: &mut syn::File) {
         // ```
         if let Item::ExternCrate(item) = item {
             let ident = item.ident.to_string();
-            if ident == "compiler_builtins" || ident == "core" || ident == "interface_attribute_placeholder" {
+            if ident == "compiler_builtins"
+                || ident == "core"
+                || ident == "interface_attribute_placeholder"
+            {
                 return false;
             }
         }
